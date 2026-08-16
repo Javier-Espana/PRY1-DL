@@ -11,6 +11,10 @@ Este repositorio contiene la solucion completa para el **Proyecto 1: Competencia
 PRY1-DL/
 ├── data/
 │   ├── train.csv                      # Dataset de entrenamiento principal
+│   ├── saved_models/                  # Checkpoints del modelo y preprocesador (Tracked en Git)
+│   │   ├── pipeline.joblib            # Preprocesador ajustado
+│   │   ├── model_fold_*.pt            # Pesos de los 10 pliegues del ensamble
+│   │   └── model_config.json          # Configuracion de hiperparametros
 │   └── pruebas/
 │       ├── pipeline_test.csv          # Muestra del dataset de prueba
 │       └── expected_output.csv        # Formato de referencia de predicciones
@@ -23,10 +27,6 @@ PRY1-DL/
 │   ├── 01_eda.ipynb                   # Analisis Exploratorio de Datos
 │   ├── 02_model_experiments.ipynb     # Experimentos, HPO y entrenamiento
 │   └── 03_evaluation_and_submission.ipynb # Verificacion del pipeline de prueba
-├── saved_models/                      # Checkpoints del modelo y preprocesador (Tracked en Git)
-│   ├── pipeline.joblib                # Preprocesador ajustado
-│   ├── model_fold_*.pt                # Pesos de los 10 pliegues del ensamble
-│   └── model_config.json              # Configuracion de hiperparametros
 ├── src/
 │   ├── data_processing.py             # Preprocesador tabular robusto
 │   ├── dataset.py                     # Wrapper PyTorch Dataset/DataLoader
@@ -68,7 +68,7 @@ python main.py predict --test_path data/pruebas/pipeline_test.csv --output_path 
 Parametros de la inferencia:
 * `--test_path`: Ruta al CSV de prueba (por defecto `data/pruebas/pipeline_test.csv`).
 * `--output_path`: Ruta donde se guardaran las predicciones (por defecto `data/pruebas/expected_output.csv`).
-* `--saved_models_dir`: Directorio que contiene los modelos guardados (por defecto `saved_models`).
+* `--saved_models_dir`: Directorio que contiene los modelos guardados (por defecto `data/saved_models`).
 
 ### 2. Entrenamiento y Reproduccion de Experimentos
 
@@ -83,7 +83,7 @@ python main.py train
 ## Control de Versiones con Git (`.gitignore`)
 
 El archivo `.gitignore` esta configurado para incluir en el repositorio todos los archivos CSV de datos y checkpoints de entrenamiento de los modelos:
-* Checkpoints entrenados (`saved_models/*.pt`, `saved_models/*.joblib`, `saved_models/*.json`).
+* Checkpoints entrenados (`data/saved_models/*.pt`, `data/saved_models/*.joblib`, `data/saved_models/*.json`).
 * Datasets y archivos CSV (`data/*.csv`, `data/**/*.csv`).
 * Excluye carpetas de entorno virtual (`.venv/`), cache de Python (`__pycache__/`) y archivos auxiliares de LaTeX (`*.aux`, `*.log`).
 

@@ -104,7 +104,7 @@ def run_training():
             'n_splits': 5,
             'seed': 42
         }
-        oof_rmse, _, _ = train_kfold(df, config, save_dir=f'saved_models/benchmark_{arch}', verbose=False)
+        oof_rmse, _, _ = train_kfold(df, config, save_dir=f'data/saved_models/benchmark_{arch}', verbose=False)
         benchmark_results[arch] = oof_rmse
         print(f"  Architecture [{arch.upper()}] 5-Fold OOF RMSE: ${oof_rmse:,.2f}")
 
@@ -136,7 +136,7 @@ def run_training():
     }
 
     final_oof_rmse, oof_preds_dollars, history = train_kfold(
-        df, final_config, save_dir='saved_models', verbose=True
+        df, final_config, save_dir='data/saved_models', verbose=True
     )
 
     print("\n==========================================")
@@ -150,13 +150,13 @@ def run_training():
         'best_hyperparameters': best_params,
         'final_metrics': metrics
     }
-    with open('saved_models/experiment_summary.json', 'w') as f:
+    with open('data/saved_models/experiment_summary.json', 'w') as f:
         json.dump(summary, f, indent=4)
 
     print("\nAll experiments successfully completed!")
-    print(f"Final Model Saved to 'saved_models/' with OOF RMSE: ${metrics['RMSE']:,.2f}")
+    print(f"Final Model Saved to 'data/saved_models/' with OOF RMSE: ${metrics['RMSE']:,.2f}")
 
-def run_prediction(test_path: str, output_path: str, saved_models_dir: str = 'saved_models'):
+def run_prediction(test_path: str, output_path: str, saved_models_dir: str = 'data/saved_models'):
     if not os.path.exists(test_path):
         raise FileNotFoundError(f"Test dataset file not found at: {test_path}")
 
@@ -244,7 +244,7 @@ if __name__ == '__main__':
     predict_parser = subparsers.add_parser('predict', help='Generate test submission predictions')
     predict_parser.add_argument('--test_path', type=str, default='data/pruebas/pipeline_test.csv', help='Path to test CSV')
     predict_parser.add_argument('--output_path', type=str, default='data/pruebas/expected_output.csv', help='Path to output CSV')
-    predict_parser.add_argument('--saved_models_dir', type=str, default='saved_models', help='Directory of saved models')
+    predict_parser.add_argument('--saved_models_dir', type=str, default='data/saved_models', help='Directory of saved models')
 
     args = parser.parse_args()
 

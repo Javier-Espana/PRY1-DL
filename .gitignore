@@ -33,9 +33,9 @@ Thumbs.db
 *.blg
 
 # Explicitly ensure models, pipeline joblibs, json configs, and data CSVs are committed
-!saved_models/
-!saved_models/*.pt
-!saved_models/*.joblib
-!saved_models/*.json
+!data/saved_models/
+!data/saved_models/*.pt
+!data/saved_models/*.joblib
+!data/saved_models/*.json
 !data/*.csv
 !data/**/*.csv

@@ -48,7 +48,7 @@ def validate_epoch(model, dataloader, criterion, device):
     rmse_dollars = calculate_rmse(np.expm1(all_targets), np.expm1(all_preds))
     return total_loss / len(dataloader.dataset), rmse_dollars, all_preds
 
-def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'saved_models', verbose: bool = True):
+def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_models', verbose: bool = True):
     os.makedirs(save_dir, exist_ok=True)
     set_seed(config.get('seed', 42))
 
@@ -174,7 +174,7 @@ def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'saved_models', 
     return overall_oof_rmse, oof_preds_dollars, history
 
 
-def tune_hyperparameters(df: pd.DataFrame, n_trials: int = 12, save_dir: str = 'saved_models'):
+def tune_hyperparameters(df: pd.DataFrame, n_trials: int = 12, save_dir: str = 'data/saved_models'):
     print(f"Starting Optuna Hyperparameter Optimization ({n_trials} trials)...")
 
     def objective(trial):
