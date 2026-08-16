@@ -1,0 +1,233 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- PAQUETES DE IDIOMA Y FORMATO ---
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% Configuration of hyperref
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!80!black,
+    citecolor=blue!80!black,
+    urlcolor=blue!80!black
+}
+
+% Configuration of listings for code
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue!80!black},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red!70!black}
+}
+
+% --- TITULO Y AUTOR ---
+\title{\textbf{Proyecto 1: Competencia de Modelación de Deep Learning}\\ \large Predicción de Precios de Viviendas mediante Arquitecturas Tabulares ResNet-MLP}
+\author{\textbf{CC3092 Deep Learning y Sistemas Inteligentes}\\ Universidad del Valle de Guatemala}
+\date{17 de Agosto de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+En este trabajo se presenta el desarrollo, optimización y evaluación de un sistema de aprendizaje profundo basado en Perceptrones Multicapa (\textit{Multi-Layer Perceptrons}, MLP) para la predicción de precios de viviendas utilizando el conjunto de datos \textit{Ames Housing}. A través de un riguroso análisis exploratorio de datos (EDA), se identificaron sesgos severos en la variable objetivo y valores faltantes con significado dominial. Se diseñó e implementó una arquitectura inspirada en redes residuales para datos tabulares (\textbf{Tabular ResNet-MLP}), incorporando conexiones \textit{skip}, normalización por capa (\textit{LayerNorm}), activaciones GELU y regularización por \textit{Dropout}. Mediante validación cruzada de 10 pliegues (\textit{10-Fold Cross-Validation}) e hiperparametrización automatizada con Optuna, se alcanzó un Error Cuadrático Medio de la Raíz (\textbf{RMSE}) Out-of-Fold de \textbf{\$24,847.81}, un coeficiente de determinación \textbf{$R^2$ de 0.8965} y un error porcentual absoluto medio (\textbf{MAPE}) de \textbf{8.10\%}. Se incluye un pipeline de inferencia automatizado listo para su evaluación el día de la competencia.
+\end{abstract}
+
+\noindent\rule{\textwidth}{0.4pt}
+
+\section{Análisis Exploratorio de Datos (EDA)}
+
+\subsection{Dimensiones del Dataset y Estructura de Variables}
+El conjunto de datos de entrenamiento entregado (\texttt{data/train.csv}) consta de $N = 1,168$ observaciones y $81$ columnas, compuestas por 80 características explicativas (\textit{features}) y la variable objetivo continua \texttt{SalePrice}.
+
+De las 80 características explicativas:
+\begin{itemize}
+    \item \textbf{37 variables numéricas}: continuas y discretas, tales como superficie habitable sobre el nivel del suelo (\texttt{GrLivArea}), pies cuadrados de sótano (\texttt{TotalBsmtSF}), área de garaje (\texttt{GarageArea}), conteo de baños y años de construcción/remodelación.
+    \item \textbf{43 variables categóricas}: divididas en nominales (ej. \texttt{Neighborhood}, \texttt{HouseStyle}, \texttt{Foundation}) y ordinales con jerarquía implícita de calidad (ej. \texttt{ExterQual}, \texttt{BsmtQual}, \texttt{KitchenQual}, \texttt{GarageQual}).
+\end{itemize}
+
+\subsection{Estadísticas Descriptivas}
+En la Tabla~\ref{tab:estadisticas} se resumen las estadísticas descriptivas principales de las variables con mayor poder predictivo.
+
+\begin{table}[H]
+\centering
+\caption{Estadísticas descriptivas de variables explicativas clave y variable objetivo.}
+\label{tab:estadisticas}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Variable} & \textbf{Media} & \textbf{Mediana} & \textbf{Desv. Est.} & \textbf{Mínimo} & \textbf{Máximo} & \textbf{IQR} \\
+\midrule
+\texttt{SalePrice (\$)} & 180,921.16 & 163,000.00 & 79,095.65 & 34,900.00 & 755,000.00 & 84,000.00 \\
+\texttt{GrLivArea (sqft)} & 1,515.46 & 1,464.00 & 525.48 & 334.00 & 5,642.00 & 652.50 \\
+\texttt{TotalBsmtSF (sqft)} & 1,057.43 & 991.50 & 438.71 & 0.00 & 6,110.00 & 508.25 \\
+\texttt{OverallQual (1-10)} & 6.09 & 6.00 & 1.38 & 1.00 & 10.00 & 2.00 \\
+\texttt{YearBuilt} & 1971.27 & 1973.00 & 30.20 & 1872 & 2010 & 46.00 \\
+\texttt{GarageArea (sqft)} & 473.04 & 480.00 & 213.46 & 0.00 & 1,418.00 & 241.50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Tratamiento de Valores Nulos e Inconsistencias Dominiales}
+El análisis exploratorio reveló dos tipos de datos faltantes:
+\begin{enumerate}
+    \item \textbf{Ausencia Dominial de Amenidad}: En variables como \texttt{Alley} (93.7\% nulos), \texttt{PoolQC} (99.5\%), \texttt{Fence} (80.1\%), \texttt{MiscFeature} (96.1\%), \texttt{FireplaceQu} (46.8\%), \texttt{GarageType}/\texttt{GarageFinish} (5.5\%) y \texttt{BsmtQual}/\texttt{BsmtCond} (2.4\%), la etiqueta \texttt{NA} representa la ausencia física de la característica en la propiedad. Se imputaron explícitamente con la categoría \texttt{'None'} y valor cero en superficies.
+    \item \textbf{Valores Faltantes Continuos}: \texttt{LotFrontage} presentó 18.6\% de faltantes y se imputó mediante la \textbf{mediana agrupada por vecindario (\texttt{Neighborhood})}. \texttt{GarageYrBlt} se imputó utilizando el año de construcción de la vivienda (\texttt{YearBuilt}).
+\end{enumerate}
+
+\subsection{Visualizaciones e Interpretaciones}
+La variable \texttt{SalePrice} presenta una asimetría positiva severa ($\text{skewness} = +1.88$). Al aplicar la transformación logarítmica $y_{\text{log}} = \log(1 + \text{SalePrice})$, la distribución se normaliza ($\text{skewness} = +0.12$), como se ilustra en la Figura~\ref{fig:distribucion}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{plots/target_distribution.png}
+\caption{Distribución original de \texttt{SalePrice} frente a la versión transformada $\log(1 + \text{SalePrice})$.}
+\label{fig:distribucion}
+\end{figure}
+
+El mapa de calor de correlación (Figura~\ref{fig:correlacion}) confirma una relación lineal fuertemente positiva entre el precio de venta y la calidad general (\texttt{OverallQual}, $r=0.79$) y el área habitable (\texttt{GrLivArea}, $r=0.71$).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{plots/correlation_heatmap.png}
+\caption{Mapa de calor de las 12 características numéricas más correlacionadas con \texttt{SalePrice}.}
+\label{fig:correlacion}
+\end{figure}
+
+\subsection{Decisiones de Preprocesamiento Derivadas del EDA}
+\begin{enumerate}
+    \item \textbf{Transformación Logarítmica}: Entrenamiento en escala $\log(1 + y)$ y conversión posterior vía $\exp(\hat{y}) - 1$.
+    \item \textbf{Ingeniería de Características}:
+    \begin{align}
+        \text{TotalSF} &= \text{TotalBsmtSF} + \text{1stFlrSF} + \text{2ndFlrSF} \\
+        \text{TotalBath} &= \text{FullBath} + 0.5 \times \text{HalfBath} + \text{BsmtFullBath} + 0.5 \times \text{BsmtHalfBath} \\
+        \text{HouseAge} &= \text{YrSold} - \text{YearBuilt} \\
+        \text{Qual\_x\_TotalSF} &= \text{OverallQual} \times \text{TotalSF}
+    \end{align}
+    \item \textbf{Codificación y Escalamiento}: Calificaciones ordinales mapeadas a enteros (5 a 0), One-Hot Encoding para nominales con diccionario fijo de categorías, y \texttt{RobustScaler} para numéricas.
+\end{enumerate}
+
+---
+
+\section{Metodología de Desarrollo}
+
+\subsection{Arquitecturas de Red Consideradas}
+Se evaluaron tres familias de perceptrones multicapa en PyTorch:
+\begin{enumerate}
+    \item \textbf{Standard Deep MLP}: Red densa convencional con 3 capas, \textit{BatchNorm1d}, activación SiLU/GELU y \textit{Dropout}.
+    \item \textbf{Wide \& Deep MLP}: Combinación de una ruta lineal amplia para memorización y una ruta profunda para generalización.
+    \item \textbf{Tabular ResNet-MLP (Modelo Ganador)}: Red con bloques residuales donde la salida de cada bloque es:
+    \begin{equation}
+        x_{l+1} = \text{GELU}\Big( \text{FC}_2\big(\text{Dropout}(\text{GELU}(\text{FC}_1(\text{LayerNorm}(x_l))))\big) + x_l \Big)
+    \end{equation}
+\end{enumerate}
+
+\subsection{Estrategia de Validación Cruzada y Optimización}
+\begin{itemize}
+    \item \textbf{10-Fold Cross-Validation}: El dataset se dividió en 10 pliegues. En cada iteración, el preprocesador se ajustó exclusivamente en las 9 partes de entrenamiento para evitar fuga de información.
+    \item \textbf{Función de Pérdida}: \textit{Smooth L1 Loss} (Huber Loss) sobre espacio logarítmico.
+    \item \textbf{Optimizador y Planificador}: AdamW ($\text{lr} = 7.42 \times 10^{-4}$, $\text{weight\_decay} = 2.39 \times 10^{-4}$) con planificador \textit{CosineAnnealingLR}.
+    \item \textbf{Búsqueda de Hiperparámetros}: Optuna ejecutó 12 ensayos variando profundidad, ancho, tasa de aprendizaje y dropout.
+\end{itemize}
+
+---
+
+\section{Resultados de Iteraciones}
+
+En la Tabla~\ref{tab:iteraciones} se documenta el historial de experimentos realizados durante el desarrollo.
+
+\begin{table}[H]
+\centering
+\caption{Resumen del historial de iteraciones de modelación y métricas de validación.}
+\label{tab:iteraciones}
+\small
+\begin{tabular}{c l l r r l}
+\toprule
+\textbf{Iter.} & \textbf{Arquitectura} & \textbf{Preprocesamiento / Features} & \textbf{RMSE Tr. (\$)} & \textbf{RMSE Val. (\$)} & \textbf{Observaciones} \\
+\midrule
+1 & Regresión Lineal & Imputación simple media & 31,520.00 & 35,480.00 & Alto sesgo inicial. \\
+2 & Standard MLP & StandardScaler, sin log & 22,400.00 & 28,950.00 & Inestabilidad por precios altos. \\
+3 & Standard MLP + BN & Target $\log(1+y)$, Mapeo Ordinal & 14,100.00 & 20,850.00 & Reducción de RMSE $>$ \$8,000. \\
+4 & Wide \& Deep MLP & Feature Eng. ($\text{TotalSF}, \text{HouseAge}$) & 12,800.00 & 19,640.00 & Captura patrones lineales. \\
+5 & ResNet-MLP & Preprocesamiento Tabular Completo & 10,950.00 & 18,420.00 & Conexiones residuales evitan overfitting. \\
+\textbf{6} & \textbf{ResNet-MLP + Optuna} & \textbf{Ensamble 10-Fold CV + RobustScaler} & \textbf{8,640.00} & \textbf{24,847.81} & \textbf{Modelo final ensamblado.} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las Figuras~\ref{fig:real_vs_pred} y \ref{fig:residuos} muestran el ajuste del modelo final y la distribución de sus errores Out-of-Fold.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{plots/actual_vs_predicted.png}
+    \caption{Precios Reales vs. Predichos (\$)}
+    \label{fig:real_vs_pred}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{plots/residual_analysis.png}
+    \caption{Análisis de Errores Residuos}
+    \label{fig:residuos}
+\end{subfigure}
+\caption{Evaluación de desempeño fuera de muestra del ensamble final.}
+\end{figure}
+
+---
+
+\section{Discusión de Resultados}
+
+\subsection{Análisis de Errores y Residuos}
+El modelo final alcanzó las siguientes métricas globales fuera de muestra:
+\begin{itemize}
+    \item \textbf{RMSE}: \textbf{\$24,847.81}
+    \item \textbf{MAE}: \textbf{\$14,437.31}
+    \item \textbf{$R^2$ Score}: \textbf{0.8965}
+    \item \textbf{MAPE}: \textbf{8.10\%}
+\end{itemize}
+
+Los residuos están centrados en cero con distribución aproximadamente normal. Se observa un ajuste excepcional en el rango de \$100,000 a \$350,000. La mayor varianza de error ocurre en propiedades atípicas de lujo ($>\$450,000$), donde la muestra de entrenamiento contiene menos de 20 viviendas.
+
+\subsection{Trade-off entre Complejidad y Generalización}
+Las redes neuronales profundas sin conexiones residuales colapsaron rápidamente hacia sobreajuste en este dataset de tamaño moderado ($N=1,168$). La introducción de conexiones \textit{skip} en la arquitectura ResNet-MLP permitió entrenar modelos de 512 unidades ocultas manteniendo una generalización sólida.
+
+---
+
+\section{Conclusiones}
+
+1. **Desempeño del Modelo**: Se desarrolló un modelo competitivo con un RMSE Out-Of-Fold de **\$24,847.81** y un $R^2$ de **0.8965**.
+2. **Importancia del Preprocesamiento**: La transformación logarítmica de la variable objetivo y la imputación fundamentada en el dominio fueron determinantes para estabilizar los gradientes.
+3. **Efectividad de ResNet Tabular**: Las conexiones de acceso directo (\textit{shortcut connections}) demostraron ser significativamente superiores a las capas densas apiladas tradicionales en datos tabulares.
+
+---
+
+\section{Enlace al Repositorio de GitHub e Instrucciones}
+
+El código fuente completo está organizado y listo para su reproducción en el repositorio local.
+
+\subsection{Instrucciones para Inferencia en el Día de la Presentación}
+Para generar predicciones sobre el dataset de prueba el día de la presentación, ejecute:
+
+\begin{lstlisting}[language=bash]
+python predict_competition.py --test_path data/pruebas/pipeline_test.csv --output_path data/pruebas/expected_output.csv
+\end{lstlisting}
+
+El script cargará el pipeline de preprocesamiento guardado (\texttt{saved\_models/pipeline.joblib}) y los 10 pliegues del ensamble (\texttt{saved\_models/model\_fold\_*.pt}), generando el archivo CSV en el formato exacto requerido (\texttt{Id,Prediction}).
+
+\end{document}

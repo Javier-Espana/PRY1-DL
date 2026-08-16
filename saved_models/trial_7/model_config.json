@@ -1,0 +1,17 @@
+{
+    "architecture": "standard",
+    "hidden_dim": 256,
+    "num_blocks": 3,
+    "dropout": 0.25,
+    "activation": "silu",
+    "lr": 0.0009504345194301123,
+    "weight_decay": 0.00048800334393554127,
+    "batch_size": 32,
+    "epochs": 80,
+    "patience": 20,
+    "n_splits": 5,
+    "seed": 42,
+    "input_dim": 248,
+    "overall_oof_rmse": 79790.60064999151,
+    "mean_fold_rmse": 78235.02163492325
+}

@@ -1,0 +1,17 @@
+{
+    "architecture": "wide_deep",
+    "hidden_dim": 512,
+    "num_blocks": 2,
+    "dropout": 0.05,
+    "activation": "gelu",
+    "lr": 0.002586031715511656,
+    "weight_decay": 0.00012895109326550584,
+    "batch_size": 32,
+    "epochs": 80,
+    "patience": 20,
+    "n_splits": 5,
+    "seed": 42,
+    "input_dim": 248,
+    "overall_oof_rmse": 30582.324983707644,
+    "mean_fold_rmse": 29784.39852444168
+}

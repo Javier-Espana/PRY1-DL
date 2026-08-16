@@ -1,0 +1,17 @@
+{
+    "architecture": "resnet",
+    "hidden_dim": 512,
+    "num_blocks": 4,
+    "dropout": 0.15000000000000002,
+    "activation": "silu",
+    "lr": 0.0012755384895885159,
+    "weight_decay": 0.000598694790445047,
+    "batch_size": 32,
+    "epochs": 80,
+    "patience": 20,
+    "n_splits": 5,
+    "seed": 42,
+    "input_dim": 248,
+    "overall_oof_rmse": 26700.10293702538,
+    "mean_fold_rmse": 26258.178109503282
+}

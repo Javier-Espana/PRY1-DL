@@ -1,0 +1,41 @@
+# Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache & build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# LaTeX compilation auxiliary files (leave main .tex and .pdf intact)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+
+# Explicitly ensure models, pipeline joblibs, json configs, and data CSVs are committed
+!saved_models/
+!saved_models/*.pt
+!saved_models/*.joblib
+!saved_models/*.json
+!data/*.csv
+!data/**/*.csv
