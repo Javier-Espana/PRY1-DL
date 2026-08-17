@@ -1,7 +1,7 @@
 # Proyecto 1: Competencia de Modelacion de Deep Learning
-## Deep Learning Housing Price Regression (PyTorch Tabular ResNet & SwiGLU Ensemble)
+## Deep Learning Housing Price Regression (PyTorch Tabular ResNet Multi-Seed Ensemble)
 
-Este repositorio contiene la solucion completa para el **Proyecto 1: Competencia de Modelacion (CC3092 Deep Learning y sistemas inteligentes)**. El proyecto desarrolla una arquitectura de Redes Neuronales Multicapa (*Multi-Layer Perceptrons*) optimizada para datos tabulares mediante bloques residuales (**ResNet-MLP**), unidades lineales de compuerta (**SwiGLU-MLP**) y un ensamble multi-semilla de 60 modelos (**Multi-Seed 10-Fold Cross Validation Ensemble**).
+Este repositorio contiene la solucion completa para el **Proyecto 1: Competencia de Modelacion (CC3092 Deep Learning y sistemas inteligentes)**. El proyecto implementa una arquitectura neuronal optimizada para datos tabulares mediante bloques residuales (**Tabular ResNet-MLP** con activaciones GELU, LayerNorm y Dropout regularizado), combinada en un ensamble multi-semilla de 30 modelos evaluados en validacion cruzada estratificada de 10 pliegues.
 
 ---
 
@@ -13,8 +13,8 @@ PRY1-DL/
 │   ├── train.csv                      # Dataset de entrenamiento principal
 │   ├── saved_models/                  # Checkpoints del modelo y preprocesador (Tracked en Git)
 │   │   ├── pipeline.joblib            # Preprocesador ajustado
-│   │   ├── model_*.pt                 # Pesos de los 60 modelos del ensamble
-│   │   ├── model_config.json          # Manifiesto y configuracion de hiperparametros
+│   │   ├── model_resnet_seed_*.pt     # Pesos de los 30 modelos del ensamble
+│   │   ├── model_config.json          # Manifiesto y configuracion del ensamble
 │   │   └── experiment_summary.json    # Resumen comparativo de experimentos
 │   └── pruebas/
 │       ├── pipeline_test.csv          # Muestra del dataset de prueba
@@ -29,7 +29,7 @@ PRY1-DL/
 │   ├── 02_model_experiments.ipynb     # Experimentos, HPO y benchmarking
 │   └── 03_evaluation_and_submission.ipynb # Verificacion del pipeline de prueba
 ├── src/
-│   ├── data_processing.py             # Preprocesador tabular robusto con ingenieria avanzada
+│   ├── data_processing.py             # Preprocesador tabular robusto
 │   ├── dataset.py                     # Wrapper PyTorch Dataset/DataLoader
 │   ├── models.py                      # Arquitecturas MLP (ResNet, SwiGLU, Wide&Deep, Standard)
 │   ├── train.py                       # Pipeline 10-Fold CV & Multi-Seed Ensemble
@@ -73,7 +73,7 @@ Parametros de la inferencia:
 
 ### 2. Entrenamiento y Reproduccion de Experimentos
 
-Para reproducir todo el pipeline (analisis EDA, benchmarking de 4 arquitecturas, entrenamiento del ensamble de 60 modelos y evaluacion de residuos):
+Para reproducir todo el pipeline (analisis EDA, entrenamiento del ensamble multi-semilla y evaluacion de residuos):
 
 ```bash
 python main.py train
@@ -90,11 +90,10 @@ El archivo `.gitignore` esta configurado para incluir en el repositorio todos lo
 
 ---
 
-## Resumen de Resultados Finales
+## Resumen de Resultados Finales (Modelo Campeon)
 
-* **Arquitecturas del Ensamble**: Tabular ResNet-MLP + SwiGLU-MLP
-* **Estrategia de Ensamble**: 60 modelos neuronales (2 arquitecturas x 3 semillas x 10 pliegues)
-* **RMSE Out-Of-Fold ($)**: **$26,772.24**
-* **Coeficiente de Determinacion ($R^2$)**: **0.8798**
-* **Error Relativo Porcentual (MAPE)**: **7.96%**
-* **Error Absoluto Medio (MAE)**: **$13,627.83**
+* **Metrica Principal de Evaluacion (OOF RMSE)**: **$22,723.01**
+* **Coeficiente de Determinacion ($R^2$)**: **0.9134** (Explica mas del 91.3% de la varianza)
+* **Error Absoluto Medio (MAE)**: **$13,177.30**
+* **Error Relativo Porcentual (MAPE)**: **7.61%**
+* **Arquitectura del Ensamble**: Tabular ResNet-MLP (30 modelos: 3 semillas x 10 pliegues)

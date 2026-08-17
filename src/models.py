@@ -65,28 +65,23 @@ class ResidualBlock(nn.Module):
 
 class ResNetMLP(nn.Module):
     """
-    ResNet-Style Deep Architecture for Tabular Regression.
+    ResNet-Style Architecture for Tabular Regression.
     """
-    def __init__(self, input_dim: int, hidden_dim: int = 512, num_blocks: int = 3, dropout: float = 0.15, activation: str = 'gelu', **kwargs):
+    def __init__(self, input_dim: int, hidden_dim: int = 512, num_blocks: int = 2, dropout: float = 0.20, activation: str = 'gelu', **kwargs):
         super(ResNetMLP, self).__init__()
         self.input_layer = nn.Linear(input_dim, hidden_dim)
         self.blocks = nn.ModuleList([
             ResidualBlock(hidden_dim, dropout=dropout, activation=activation) for _ in range(num_blocks)
         ])
         self.norm_final = nn.LayerNorm(hidden_dim)
-        self.head = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.GELU() if activation.lower() == 'gelu' else nn.SiLU(),
-            nn.Dropout(dropout / 2),
-            nn.Linear(hidden_dim // 2, 1)
-        )
+        self.output_layer = nn.Linear(hidden_dim, 1)
 
     def forward(self, x):
         x = self.input_layer(x)
         for block in self.blocks:
             x = block(x)
         x = self.norm_final(x)
-        return self.head(x)
+        return self.output_layer(x)
 
 
 class SwiGLUBlock(nn.Module):
@@ -136,6 +131,95 @@ class SwiGLUMLP(nn.Module):
         return self.head(x)
 
 
+class EmbResNetMLP(nn.Module):
+    """
+    ResNet-MLP with Trainable Entity Embeddings for Categorical Variables.
+    """
+    def __init__(self, num_cont_dim: int, emb_dims: list, hidden_dim: int = 512, num_blocks: int = 3, dropout: float = 0.20, **kwargs):
+        super(EmbResNetMLP, self).__init__()
+        self.embeddings = nn.ModuleList([
+            nn.Embedding(c, e) for c, e in emb_dims
+        ])
+        self.emb_drop = nn.Dropout(0.25)
+        total_emb = sum(e for _, e in emb_dims)
+        total_input = num_cont_dim + total_emb
+
+        self.inp_layer = nn.Linear(total_input, hidden_dim)
+        self.blocks = nn.ModuleList()
+        for _ in range(num_blocks):
+            self.blocks.append(nn.ModuleDict({
+                'n1': nn.LayerNorm(hidden_dim),
+                'f1': nn.Linear(hidden_dim, hidden_dim),
+                'n2': nn.LayerNorm(hidden_dim),
+                'f2': nn.Linear(hidden_dim, hidden_dim),
+                'dr': nn.Dropout(dropout)
+            }))
+        self.norm_f = nn.LayerNorm(hidden_dim)
+        self.head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout / 2),
+            nn.Linear(hidden_dim // 2, 1)
+        )
+
+    def forward(self, x_cont, x_cat):
+        embs = [e(x_cat[:, i]) for i, e in enumerate(self.embeddings)]
+        x_emb = self.emb_drop(torch.cat(embs, dim=1))
+        x = torch.cat([x_cont, x_emb], dim=1)
+        x = F.gelu(self.inp_layer(x))
+        for blk in self.blocks:
+            res = x
+            out = F.gelu(blk['f1'](blk['n1'](x)))
+            out = blk['dr'](out)
+            out = blk['f2'](blk['n2'](out))
+            x = F.gelu(out + res)
+        return self.head(self.norm_f(x))
+
+
+class EmbSwiGLUMLP(nn.Module):
+    """
+    SwiGLU-MLP with Trainable Entity Embeddings for Categorical Variables.
+    """
+    def __init__(self, num_cont_dim: int, emb_dims: list, hidden_dim: int = 512, num_blocks: int = 3, dropout: float = 0.20, **kwargs):
+        super(EmbSwiGLUMLP, self).__init__()
+        self.embeddings = nn.ModuleList([
+            nn.Embedding(c, e) for c, e in emb_dims
+        ])
+        self.emb_drop = nn.Dropout(0.25)
+        total_emb = sum(e for _, e in emb_dims)
+        total_input = num_cont_dim + total_emb
+
+        self.inp_layer = nn.Linear(total_input, hidden_dim)
+        self.blocks = nn.ModuleList()
+        for _ in range(num_blocks):
+            self.blocks.append(nn.ModuleDict({
+                'norm': nn.LayerNorm(hidden_dim),
+                'gate': nn.Linear(hidden_dim, hidden_dim),
+                'val': nn.Linear(hidden_dim, hidden_dim),
+                'out': nn.Linear(hidden_dim, hidden_dim),
+                'dr': nn.Dropout(dropout)
+            }))
+        self.norm_f = nn.LayerNorm(hidden_dim)
+        self.head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.SiLU(),
+            nn.Dropout(dropout / 2),
+            nn.Linear(hidden_dim // 2, 1)
+        )
+
+    def forward(self, x_cont, x_cat):
+        embs = [e(x_cat[:, i]) for i, e in enumerate(self.embeddings)]
+        x_emb = self.emb_drop(torch.cat(embs, dim=1))
+        x = torch.cat([x_cont, x_emb], dim=1)
+        x = F.silu(self.inp_layer(x))
+        for blk in self.blocks:
+            n = blk['norm'](x)
+            g = F.silu(blk['gate'](n))
+            v = blk['val'](n)
+            x = x + blk['out'](blk['dr'](g * v))
+        return self.head(self.norm_f(x))
+
+
 class WideAndDeepMLP(nn.Module):
     """
     Wide & Deep Tabular Architecture.
@@ -168,7 +252,7 @@ class WideAndDeepMLP(nn.Module):
         return self.wide(x) + self.deep(x)
 
 
-def get_model(architecture: str, input_dim: int, **kwargs):
+def get_model(architecture: str, input_dim: int = None, **kwargs):
     """
     Factory method for instantiating model architectures.
     """
@@ -177,6 +261,10 @@ def get_model(architecture: str, input_dim: int, **kwargs):
         return ResNetMLP(input_dim=input_dim, **kwargs)
     elif arch == 'swiglu':
         return SwiGLUMLP(input_dim=input_dim, **kwargs)
+    elif arch == 'emb_resnet':
+        return EmbResNetMLP(**kwargs)
+    elif arch == 'emb_swiglu':
+        return EmbSwiGLUMLP(**kwargs)
     elif arch == 'wide_deep':
         return WideAndDeepMLP(input_dim=input_dim, **kwargs)
     elif arch == 'standard':

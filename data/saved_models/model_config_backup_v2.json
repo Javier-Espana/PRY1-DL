@@ -1,0 +1,616 @@
+{
+    "input_dim": 259,
+    "overall_oof_rmse": 26772.242408238373,
+    "overall_oof_r2": 0.8798311829175871,
+    "overall_oof_mape": 7.962433922848773,
+    "ensemble_manifest": [
+        {
+            "filename": "model_resnet_seed_42_fold_0.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 0,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_1.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 1,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_2.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 2,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_3.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 3,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_4.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 4,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_5.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 5,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_6.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 6,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_7.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 7,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_8.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 8,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_42_fold_9.pt",
+            "architecture": "resnet",
+            "seed": 42,
+            "fold": 9,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_0.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 0,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_1.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 1,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_2.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 2,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_3.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 3,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_4.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 4,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_5.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 5,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_6.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 6,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_7.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 7,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_8.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 8,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_123_fold_9.pt",
+            "architecture": "resnet",
+            "seed": 123,
+            "fold": 9,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_0.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 0,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_1.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 1,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_2.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 2,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_3.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 3,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_4.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 4,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_5.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 5,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_6.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 6,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_7.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 7,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_8.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 8,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_resnet_seed_2024_fold_9.pt",
+            "architecture": "resnet",
+            "seed": 2024,
+            "fold": 9,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_0.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 0,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_1.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 1,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_2.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 2,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_3.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 3,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_4.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 4,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_5.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 5,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_6.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 6,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_7.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 7,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_8.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 8,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_42_fold_9.pt",
+            "architecture": "swiglu",
+            "seed": 42,
+            "fold": 9,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_0.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 0,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_1.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 1,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_2.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 2,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_3.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 3,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_4.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 4,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_5.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 5,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_6.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 6,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_7.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 7,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_8.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 8,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_123_fold_9.pt",
+            "architecture": "swiglu",
+            "seed": 123,
+            "fold": 9,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_0.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 0,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_1.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 1,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_2.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 2,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_3.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 3,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_4.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 4,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_5.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 5,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_6.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 6,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_7.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 7,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_8.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 8,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        },
+        {
+            "filename": "model_swiglu_seed_2024_fold_9.pt",
+            "architecture": "swiglu",
+            "seed": 2024,
+            "fold": 9,
+            "hidden_dim": 512,
+            "num_blocks": 3,
+            "dropout": 0.15,
+            "activation": "gelu"
+        }
+    ],
+    "family_weights": {
+        "resnet_seed_42": 3.0615669275937975e-10,
+        "resnet_seed_123": 0.0,
+        "resnet_seed_2024": 0.0,
+        "swiglu_seed_42": 0.2881271492980189,
+        "swiglu_seed_123": 0.054777072587517066,
+        "swiglu_seed_2024": 0.6570957778083073
+    }
+}
