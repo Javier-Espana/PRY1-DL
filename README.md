@@ -93,7 +93,7 @@ El archivo `.gitignore` esta configurado para incluir en el repositorio todos lo
 ## Resumen de Resultados Finales (Modelo Campeon)
 
 * **Metrica Principal de Evaluacion (OOF RMSE)**: **$22,723.01**
-* **Coeficiente de Determinacion ($R^2$)**: **0.9134** (Explica mas del 91.3% de la varianza)
+* **Coeficiente de Determinacion ($R^2$)**: **0.9134** 
 * **Error Absoluto Medio (MAE)**: **$13,177.30**
 * **Error Relativo Porcentual (MAPE)**: **7.61%**
 * **Arquitectura del Ensamble**: Tabular ResNet-MLP (30 modelos: 3 semillas x 10 pliegues)
