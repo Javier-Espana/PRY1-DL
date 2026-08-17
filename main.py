@@ -9,7 +9,7 @@ import seaborn as sns
 import torch
 
 from src.data_processing import TabularPreprocessor
-from src.train import train_kfold, tune_hyperparameters
+from src.train import train_kfold, train_multi_ensemble, tune_hyperparameters
 from src.evaluate import evaluate_predictions
 from src.utils import set_seed
 from src.models import get_model
@@ -85,20 +85,20 @@ def run_training():
     print("  Phase 1: Architecture Comparison Benchmark")
     print("==========================================")
 
-    architectures = ['standard', 'wide_deep', 'resnet']
+    architectures = ['standard', 'wide_deep', 'resnet', 'swiglu']
     benchmark_results = {}
 
     for arch in architectures:
         print(f"\nBenchmarking architecture: {arch.upper()}")
         config = {
             'architecture': arch,
-            'hidden_dim': 256,
+            'hidden_dim': 512,
             'num_blocks': 3,
             'dropout': 0.15,
-            'activation': 'silu',
-            'lr': 1e-3,
+            'activation': 'gelu',
+            'lr': 8e-4,
             'weight_decay': 1e-4,
-            'batch_size': 32,
+            'batch_size': 16,
             'epochs': 100,
             'patience': 25,
             'n_splits': 5,
@@ -112,48 +112,30 @@ def run_training():
     print(f"\nWinner Architecture: {best_arch.upper()} with OOF RMSE ${benchmark_results[best_arch]:,.2f}")
 
     print("\n==========================================")
-    print("  Phase 2: Optuna Hyperparameter Search")
-    print("==========================================")
-    best_params = tune_hyperparameters(df, n_trials=12)
-
-    print("\n==========================================")
-    print("  Phase 3: Final 10-Fold Ensemble Training")
+    print("  Phase 2: Final Multi-Seed Ensemble Training")
     print("==========================================")
 
-    final_config = {
-        'architecture': best_params.get('architecture', best_arch),
-        'hidden_dim': best_params.get('hidden_dim', 256),
-        'num_blocks': best_params.get('num_blocks', 3),
-        'dropout': best_params.get('dropout', 0.15),
-        'activation': best_params.get('activation', 'silu'),
-        'lr': best_params.get('lr', 1e-3),
-        'weight_decay': best_params.get('weight_decay', 1e-4),
-        'batch_size': best_params.get('batch_size', 32),
-        'epochs': 150,
-        'patience': 30,
-        'n_splits': 10,
-        'seed': 42
-    }
-
-    final_oof_rmse, oof_preds_dollars, history = train_kfold(
-        df, final_config, save_dir='data/saved_models', verbose=True
+    final_rmse, oof_preds_dollars, config_saved = train_multi_ensemble(
+        df,
+        seeds=(42, 123, 2024),
+        architectures=('resnet', 'swiglu'),
+        save_dir='data/saved_models'
     )
 
     print("\n==========================================")
-    print("  Phase 4: Residual Evaluation & Plots")
+    print("  Phase 3: Residual Evaluation & Plots")
     print("==========================================")
     metrics = evaluate_predictions(df['SalePrice'].values, oof_preds_dollars, output_dir='docs/plots')
 
     summary = {
         'benchmark_results': benchmark_results,
         'best_architecture': best_arch,
-        'best_hyperparameters': best_params,
-        'final_metrics': metrics
+        'final_ensemble_metrics': metrics
     }
     with open('data/saved_models/experiment_summary.json', 'w') as f:
         json.dump(summary, f, indent=4)
 
-    print("\nAll experiments successfully completed!")
+    print("\nAll experiments and ensemble training successfully completed!")
     print(f"Final Model Saved to 'data/saved_models/' with OOF RMSE: ${metrics['RMSE']:,.2f}")
 
 def run_prediction(test_path: str, output_path: str, saved_models_dir: str = 'data/saved_models'):
@@ -185,32 +167,57 @@ def run_prediction(test_path: str, output_path: str, saved_models_dir: str = 'da
     X_test_tensor = torch.tensor(X_test_proc, dtype=torch.float32)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    n_splits = config.get('n_splits', 10)
     input_dim = X_test_proc.shape[1]
 
     fold_preds_log = []
 
-    for fold in range(n_splits):
-        checkpoint_path = os.path.join(saved_models_dir, f'model_fold_{fold}.pt')
-        if not os.path.exists(checkpoint_path):
-            print(f"Warning: Checkpoint for fold {fold} not found. Skipping.")
-            continue
+    # Check if ensemble manifest exists
+    manifest = config.get('ensemble_manifest', None)
+    if manifest is not None and len(manifest) > 0:
+        for item in manifest:
+            filename = item['filename']
+            checkpoint_path = os.path.join(saved_models_dir, filename)
+            if not os.path.exists(checkpoint_path):
+                continue
 
-        model = get_model(
-            architecture=config.get('architecture', 'resnet'),
-            input_dim=input_dim,
-            hidden_dim=config.get('hidden_dim', 256),
-            num_blocks=config.get('num_blocks', 3),
-            dropout=config.get('dropout', 0.15),
-            activation=config.get('activation', 'silu')
-        ).to(device)
+            model = get_model(
+                architecture=item.get('architecture', 'resnet'),
+                input_dim=input_dim,
+                hidden_dim=item.get('hidden_dim', 512),
+                num_blocks=item.get('num_blocks', 3),
+                dropout=item.get('dropout', 0.15),
+                activation=item.get('activation', 'gelu')
+            ).to(device)
 
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-        model.eval()
+            model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+            model.eval()
 
-        with torch.no_grad():
-            preds = model(X_test_tensor.to(device)).cpu().numpy().ravel()
-            fold_preds_log.append(preds)
+            with torch.no_grad():
+                preds = model(X_test_tensor.to(device)).cpu().numpy().ravel()
+                fold_preds_log.append(preds)
+    else:
+        # Fallback to default fold checkpoints
+        n_splits = config.get('n_splits', 10)
+        for fold in range(n_splits):
+            checkpoint_path = os.path.join(saved_models_dir, f'model_fold_{fold}.pt')
+            if not os.path.exists(checkpoint_path):
+                continue
+
+            model = get_model(
+                architecture=config.get('architecture', 'resnet'),
+                input_dim=input_dim,
+                hidden_dim=config.get('hidden_dim', 512),
+                num_blocks=config.get('num_blocks', 3),
+                dropout=config.get('dropout', 0.15),
+                activation=config.get('activation', 'gelu')
+            ).to(device)
+
+            model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+            model.eval()
+
+            with torch.no_grad():
+                preds = model(X_test_tensor.to(device)).cpu().numpy().ravel()
+                fold_preds_log.append(preds)
 
     if not fold_preds_log:
         raise RuntimeError("No valid fold model checkpoints were loaded.")
@@ -227,7 +234,7 @@ def run_prediction(test_path: str, output_path: str, saved_models_dir: str = 'da
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     output_df.to_csv(output_path, index=False)
 
-    print(f"\nSuccessfully generated predictions for {len(output_df)} samples.")
+    print(f"\nSuccessfully generated predictions for {len(output_df)} samples using ensemble of {len(fold_preds_log)} models.")
     print(f"Output saved to: {output_path}\n")
     print("Sample output:")
     print(output_df.head())

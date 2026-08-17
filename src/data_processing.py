@@ -37,11 +37,13 @@ ORDINAL_COLS = {
 
 class TabularPreprocessor(BaseEstimator, TransformerMixin):
     """
-    Robust, production-grade preprocessing pipeline tailored for housing data.
-    Ensures consistent feature dimensions across folds and test sets.
+    Robust, production-grade tabular preprocessing pipeline.
+    Combines domain-specific imputation, advanced feature engineering,
+    fixed categorical encoding across splits, and robust scaling.
     """
     def __init__(self, categories_dict: dict = None):
         self.neighborhood_lotfrontage_medians_ = {}
+        self.neighborhood_qual_means_ = {}
         self.num_medians_ = {}
         self.cat_modes_ = {}
         self.skewed_cols_ = []
@@ -56,12 +58,12 @@ class TabularPreprocessor(BaseEstimator, TransformerMixin):
     def _engineer_features(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
 
-        # Handle None categoricals
+        # 1. Domain-specific categorical missing values
         for col in NONE_CAT_COLS:
             if col in df.columns:
                 df[col] = df[col].fillna('None')
 
-        # Numerical defaults for missing features
+        # 2. Numerical defaults for missing values
         if 'MasVnrArea' in df.columns:
             df['MasVnrArea'] = df['MasVnrArea'].fillna(0.0)
         
@@ -72,48 +74,75 @@ class TabularPreprocessor(BaseEstimator, TransformerMixin):
         if 'GarageYrBlt' in df.columns and 'YearBuilt' in df.columns:
             df['GarageYrBlt'] = df['GarageYrBlt'].fillna(df['YearBuilt'])
 
-        # Ordinal encoding
+        # 3. Explicit Ordinal Encoding
         for col, mapping in ORDINAL_COLS.items():
             if col in df.columns:
                 df[col] = df[col].map(mapping).fillna(0).astype(float)
 
-        # Engineered features
-        bsmt_sf = df['TotalBsmtSF'] if 'TotalBsmtSF' in df.columns else 0
-        flr1_sf = df['1stFlrSF'] if '1stFlrSF' in df.columns else 0
-        flr2_sf = df['2ndFlrSF'] if '2ndFlrSF' in df.columns else 0
+        # 4. Surface Area Aggregations
+        bsmt_sf = df['TotalBsmtSF'] if 'TotalBsmtSF' in df.columns else 0.0
+        flr1_sf = df['1stFlrSF'] if '1stFlrSF' in df.columns else 0.0
+        flr2_sf = df['2ndFlrSF'] if '2ndFlrSF' in df.columns else 0.0
         df['TotalSF'] = bsmt_sf + flr1_sf + flr2_sf
 
-        full_bath = df['FullBath'] if 'FullBath' in df.columns else 0
-        half_bath = df['HalfBath'] if 'HalfBath' in df.columns else 0
-        bsmt_full = df['BsmtFullBath'] if 'BsmtFullBath' in df.columns else 0
-        bsmt_half = df['BsmtHalfBath'] if 'BsmtHalfBath' in df.columns else 0
+        fin_sf1 = df['BsmtFinSF1'] if 'BsmtFinSF1' in df.columns else 0.0
+        fin_sf2 = df['BsmtFinSF2'] if 'BsmtFinSF2' in df.columns else 0.0
+        df['TotalFinishedSF'] = flr1_sf + flr2_sf + fin_sf1 + fin_sf2
+
+        # 5. Bathroom Aggregations
+        full_bath = df['FullBath'] if 'FullBath' in df.columns else 0.0
+        half_bath = df['HalfBath'] if 'HalfBath' in df.columns else 0.0
+        bsmt_full = df['BsmtFullBath'] if 'BsmtFullBath' in df.columns else 0.0
+        bsmt_half = df['BsmtHalfBath'] if 'BsmtHalfBath' in df.columns else 0.0
         df['TotalBath'] = full_bath + 0.5 * half_bath + bsmt_full + 0.5 * bsmt_half
 
-        yr_sold = df['YrSold'] if 'YrSold' in df.columns else 2010
-        yr_built = df['YearBuilt'] if 'YearBuilt' in df.columns else 1970
+        # 6. Temporal Features & Property Age
+        yr_sold = df['YrSold'] if 'YrSold' in df.columns else 2010.0
+        yr_built = df['YearBuilt'] if 'YearBuilt' in df.columns else 1970.0
         yr_remod = df['YearRemodAdd'] if 'YearRemodAdd' in df.columns else yr_built
         gar_built = df['GarageYrBlt'] if 'GarageYrBlt' in df.columns else yr_built
 
         df['HouseAge'] = (yr_sold - yr_built).clip(lower=0)
         df['RemodAge'] = (yr_sold - yr_remod).clip(lower=0)
         df['IsRemodeled'] = (yr_remod != yr_built).astype(float)
+        df['IsNew'] = (yr_sold == yr_built).astype(float)
         df['GarageAge'] = (yr_sold - gar_built).clip(lower=0)
 
-        wood_deck = df['WoodDeckSF'] if 'WoodDeckSF' in df.columns else 0
-        open_porch = df['OpenPorchSF'] if 'OpenPorchSF' in df.columns else 0
-        enc_porch = df['EnclosedPorch'] if 'EnclosedPorch' in df.columns else 0
-        ssn_porch = df['3SsnPorch'] if '3SsnPorch' in df.columns else 0
-        screen_porch = df['ScreenPorch'] if 'ScreenPorch' in df.columns else 0
+        # 7. Porch Aggregations
+        wood_deck = df['WoodDeckSF'] if 'WoodDeckSF' in df.columns else 0.0
+        open_porch = df['OpenPorchSF'] if 'OpenPorchSF' in df.columns else 0.0
+        enc_porch = df['EnclosedPorch'] if 'EnclosedPorch' in df.columns else 0.0
+        ssn_porch = df['3SsnPorch'] if '3SsnPorch' in df.columns else 0.0
+        screen_porch = df['ScreenPorch'] if 'ScreenPorch' in df.columns else 0.0
         df['TotalPorchSF'] = wood_deck + open_porch + enc_porch + ssn_porch + screen_porch
 
+        # 8. Binary Amenities Indicators
         df['HasPool'] = (df['PoolArea'] > 0).astype(float) if 'PoolArea' in df.columns else 0.0
         df['HasGarage'] = (df['GarageArea'] > 0).astype(float) if 'GarageArea' in df.columns else 0.0
         df['HasBsmt'] = (df['TotalBsmtSF'] > 0).astype(float) if 'TotalBsmtSF' in df.columns else 0.0
         df['HasFireplace'] = (df['Fireplaces'] > 0).astype(float) if 'Fireplaces' in df.columns else 0.0
+        df['Has2ndFlr'] = (df['2ndFlrSF'] > 0).astype(float) if '2ndFlrSF' in df.columns else 0.0
 
+        # 9. Quality and Condition Interactions
         if 'OverallQual' in df.columns:
             df['Qual_x_TotalSF'] = df['OverallQual'] * df['TotalSF']
-            df['Qual_x_GrLivArea'] = df['OverallQual'] * (df['GrLivArea'] if 'GrLivArea' in df.columns else 0)
+            df['Qual_x_GrLivArea'] = df['OverallQual'] * (df['GrLivArea'] if 'GrLivArea' in df.columns else 0.0)
+            df['OverallGrade'] = df['OverallQual'] * (df['OverallCond'] if 'OverallCond' in df.columns else 5.0)
+            df['Qual_x_YearBuilt'] = df['OverallQual'] * (df['YearBuilt'] - 1870.0)
+
+        if 'ExterQual' in df.columns and 'ExterCond' in df.columns:
+            df['ExterGrade'] = df['ExterQual'] * df['ExterCond']
+        if 'BsmtQual' in df.columns and 'BsmtCond' in df.columns:
+            df['BsmtGrade'] = df['BsmtQual'] * df['BsmtCond']
+        if 'GarageQual' in df.columns and 'GarageCond' in df.columns:
+            df['GarageGrade'] = df['GarageQual'] * df['GarageCond']
+
+        # 10. Density & Layout Ratios
+        if 'LotArea' in df.columns and 'LotFrontage' in df.columns:
+            df['LotRatio'] = df['LotFrontage'] / (df['LotArea'] + 1.0)
+
+        if 'GrLivArea' in df.columns and 'TotRmsAbvGrd' in df.columns:
+            df['RoomsPerArea'] = df['TotRmsAbvGrd'] / (df['GrLivArea'] + 1.0)
 
         return df
 
@@ -130,6 +159,9 @@ class TabularPreprocessor(BaseEstimator, TransformerMixin):
         else:
             global_lf_median = 68.0
 
+        if 'OverallQual' in X.columns and 'Neighborhood' in X.columns:
+            self.neighborhood_qual_means_ = X.groupby('Neighborhood')['OverallQual'].mean().to_dict()
+
         X_eng = self._engineer_features(X)
 
         if 'LotFrontage' in X_eng.columns and 'Neighborhood' in X_eng.columns:
@@ -138,6 +170,9 @@ class TabularPreprocessor(BaseEstimator, TransformerMixin):
                 if pd.isna(row['LotFrontage']) else row['LotFrontage'],
                 axis=1
             )
+
+        if 'Neighborhood' in X_eng.columns:
+            X_eng['Neigh_Qual_Mean'] = X_eng['Neighborhood'].map(self.neighborhood_qual_means_).fillna(6.0)
 
         self.num_cols_ = X_eng.select_dtypes(include=[np.number]).columns.tolist()
         self.nominal_cols_ = X_eng.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -151,7 +186,7 @@ class TabularPreprocessor(BaseEstimator, TransformerMixin):
             X_eng[col] = X_eng[col].fillna(self.cat_modes_[col])
 
         skewness = X_eng[self.num_cols_].skew()
-        self.skewed_cols_ = skewness[abs(skewness) > 0.75].index.tolist()
+        self.skewed_cols_ = skewness[abs(skewness) > 0.5].index.tolist()
 
         for col in self.skewed_cols_:
             X_eng[col] = np.log1p(np.maximum(0, X_eng[col]))
@@ -194,6 +229,9 @@ class TabularPreprocessor(BaseEstimator, TransformerMixin):
                 if pd.isna(row['LotFrontage']) else row['LotFrontage'],
                 axis=1
             )
+
+        if 'Neighborhood' in X_eng.columns:
+            X_eng['Neigh_Qual_Mean'] = X_eng['Neighborhood'].map(self.neighborhood_qual_means_).fillna(6.0)
 
         for col in self.num_cols_:
             if col in X_eng.columns:

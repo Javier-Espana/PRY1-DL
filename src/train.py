@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR
 from sklearn.model_selection import KFold
 import optuna
 
@@ -16,15 +16,23 @@ from src.utils import set_seed, calculate_rmse
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-def train_epoch(model, dataloader, criterion, optimizer, device):
+def train_epoch(model, dataloader, criterion, optimizer, device, use_mixup=True):
     model.train()
     total_loss = 0.0
     for X_batch, y_batch in dataloader:
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+        if use_mixup and np.random.rand() < 0.25:
+            lam = np.random.beta(0.3, 0.3)
+            perm = torch.randperm(len(X_batch))
+            X_batch = lam * X_batch + (1 - lam) * X_batch[perm]
+            y_batch = lam * y_batch + (1 - lam) * y_batch[perm]
+
         optimizer.zero_grad()
         preds = model(X_batch)
         loss = criterion(preds, y_batch)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         total_loss += loss.item() * len(X_batch)
     return total_loss / len(dataloader.dataset)
@@ -50,7 +58,8 @@ def validate_epoch(model, dataloader, criterion, device):
 
 def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_models', verbose: bool = True):
     os.makedirs(save_dir, exist_ok=True)
-    set_seed(config.get('seed', 42))
+    seed = config.get('seed', 42)
+    set_seed(seed)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if verbose:
@@ -74,57 +83,64 @@ def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_mode
         for col, cats in zip(full_preprocessor.nominal_cols_, full_preprocessor.encoder_.categories_):
             categories_dict[col] = cats
 
+    # Identify extreme leverage points to exclude from training folds only
+    outlier_mask = (df['GrLivArea'] > 4000) & (df['SalePrice'] < 300000)
+    outlier_indices = set(df[outlier_mask].index.tolist())
+
     n_splits = config.get('n_splits', 10)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=config.get('seed', 42))
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
     oof_preds_log = np.zeros(len(df))
     fold_rmse_list = []
     history = {'train_losses': [], 'val_losses': [], 'val_rmses': []}
 
+    arch = config.get('architecture', 'resnet')
+
     for fold, (train_idx, val_idx) in enumerate(kf.split(X_all, y_all_log)):
         if verbose:
             print(f"\n========== Fold {fold + 1}/{n_splits} ==========")
 
-        X_train_df, y_train_log = X_all.iloc[train_idx], y_all_log[train_idx]
+        clean_train_idx = np.array([i for i in train_idx if i not in outlier_indices])
+
+        X_train_df, y_train_log = X_all.iloc[clean_train_idx], y_all_log[clean_train_idx]
         X_val_df, y_val_log = X_all.iloc[val_idx], y_all_log[val_idx]
 
-        # Fit preprocessor strictly on train fold using fixed categories_dict
         fold_preprocessor = TabularPreprocessor(categories_dict=categories_dict)
         X_train_proc = fold_preprocessor.fit_transform(X_train_df)
         X_val_proc = fold_preprocessor.transform(X_val_df)
 
         train_loader, val_loader = create_dataloaders(
             X_train_proc, y_train_log, X_val_proc, y_val_log,
-            batch_size=config.get('batch_size', 32)
+            batch_size=config.get('batch_size', 16)
         )
 
         model = get_model(
-            architecture=config.get('architecture', 'resnet'),
+            architecture=arch,
             input_dim=input_dim,
-            hidden_dim=config.get('hidden_dim', 256),
+            hidden_dim=config.get('hidden_dim', 512),
             num_blocks=config.get('num_blocks', 3),
             dropout=config.get('dropout', 0.15),
-            activation=config.get('activation', 'silu')
+            activation=config.get('activation', 'gelu')
         ).to(device)
 
-        criterion = nn.SmoothL1Loss()
+        criterion = nn.SmoothL1Loss(beta=0.02)
         optimizer = AdamW(
             model.parameters(),
-            lr=config.get('lr', 1e-3),
+            lr=config.get('lr', 8e-4),
             weight_decay=config.get('weight_decay', 1e-4)
         )
-        scheduler = CosineAnnealingLR(optimizer, T_max=config.get('epochs', 150), eta_min=1e-6)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
 
         best_val_loss = float('inf')
         best_val_rmse = float('inf')
         best_preds = None
-        patience = config.get('patience', 30)
+        patience = config.get('patience', 35)
         patience_counter = 0
 
         fold_train_losses, fold_val_losses = [], []
 
-        for epoch in range(1, config.get('epochs', 150) + 1):
-            train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
+        for epoch in range(1, config.get('epochs', 160) + 1):
+            train_loss = train_epoch(model, train_loader, criterion, optimizer, device, use_mixup=True)
             val_loss, val_rmse, val_preds = validate_epoch(model, val_loader, criterion, device)
             scheduler.step()
 
@@ -136,7 +152,8 @@ def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_mode
                 best_val_rmse = val_rmse
                 best_preds = val_preds
                 patience_counter = 0
-                torch.save(model.state_dict(), os.path.join(save_dir, f'model_fold_{fold}.pt'))
+                checkpoint_filename = f'model_{arch}_seed_{seed}_fold_{fold}.pt'
+                torch.save(model.state_dict(), os.path.join(save_dir, checkpoint_filename))
             else:
                 patience_counter += 1
 
@@ -163,30 +180,98 @@ def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_mode
         print(f"Mean Fold RMSE: ${np.mean(fold_rmse_list):,.2f} +/- ${np.std(fold_rmse_list):,.2f}")
         print(f"==========================================")
 
-    config_to_save = config.copy()
-    config_to_save['input_dim'] = input_dim
-    config_to_save['overall_oof_rmse'] = float(overall_oof_rmse)
-    config_to_save['mean_fold_rmse'] = float(np.mean(fold_rmse_list))
+    return overall_oof_rmse, oof_preds_dollars, history
+
+
+def train_multi_ensemble(df: pd.DataFrame, seeds=(42, 123, 2024), architectures=('resnet', 'swiglu'), save_dir='data/saved_models'):
+    os.makedirs(save_dir, exist_ok=True)
+    all_oof_predictions = []
+    checkpoint_manifest = []
+
+    true_dollars = df['SalePrice'].values
+
+    # Preprocessor initialization and save
+    full_prep = TabularPreprocessor()
+    X_full = full_prep.fit_transform(df.drop(columns=['SalePrice']))
+    full_prep.save(os.path.join(save_dir, 'pipeline.joblib'))
+    input_dim = X_full.shape[1]
+
+    print(f"\nTraining Multi-Architecture & Multi-Seed Ensemble ({len(architectures)} Architectures x {len(seeds)} Seeds x 10 Folds)...")
+
+    for arch in architectures:
+        for seed in seeds:
+            print(f"\n>>> Running 10-Fold CV: Architecture={arch.upper()}, Seed={seed}")
+            config = {
+                'architecture': arch,
+                'hidden_dim': 512,
+                'num_blocks': 3,
+                'dropout': 0.15,
+                'activation': 'gelu',
+                'lr': 8e-4,
+                'weight_decay': 1e-4,
+                'batch_size': 16,
+                'epochs': 160,
+                'patience': 35,
+                'n_splits': 10,
+                'seed': seed,
+                'input_dim': input_dim
+            }
+            oof_rmse, oof_preds_dollars, _ = train_kfold(df, config, save_dir=save_dir, verbose=False)
+            print(f"    Finished -> OOF RMSE: ${oof_rmse:,.2f}")
+            all_oof_predictions.append(oof_preds_dollars)
+
+            for fold in range(10):
+                checkpoint_manifest.append({
+                    'filename': f'model_{arch}_seed_{seed}_fold_{fold}.pt',
+                    'architecture': arch,
+                    'seed': seed,
+                    'fold': fold,
+                    'hidden_dim': 512,
+                    'num_blocks': 3,
+                    'dropout': 0.15,
+                    'activation': 'gelu'
+                })
+
+    final_ensemble_oof_dollars = np.mean(all_oof_predictions, axis=0)
+    final_rmse = calculate_rmse(true_dollars, final_ensemble_oof_dollars)
+    final_mape = np.mean(np.abs((true_dollars - final_ensemble_oof_dollars) / true_dollars)) * 100
+    final_r2 = 1.0 - np.sum((true_dollars - final_ensemble_oof_dollars)**2) / np.sum((true_dollars - np.mean(true_dollars))**2)
+
+    print(f"\n==========================================")
+    print(f"FINAL BLENDED MULTI-SEED ENSEMBLE RESULTS:")
+    print(f"  Ensemble Models Count : {len(checkpoint_manifest)}")
+    print(f"  Overall OOF RMSE      : ${final_rmse:,.2f}")
+    print(f"  Overall OOF R2        : {final_r2:.4f}")
+    print(f"  Overall OOF MAPE      : {final_mape:.2f}%")
+    print(f"==========================================")
+
+    config_to_save = {
+        'input_dim': input_dim,
+        'overall_oof_rmse': float(final_rmse),
+        'overall_oof_r2': float(final_r2),
+        'overall_oof_mape': float(final_mape),
+        'ensemble_manifest': checkpoint_manifest
+    }
 
     with open(os.path.join(save_dir, 'model_config.json'), 'w') as f:
         json.dump(config_to_save, f, indent=4)
 
-    return overall_oof_rmse, oof_preds_dollars, history
+    return final_rmse, final_ensemble_oof_dollars, config_to_save
 
 
-def tune_hyperparameters(df: pd.DataFrame, n_trials: int = 12, save_dir: str = 'data/saved_models'):
+def tune_hyperparameters(df: pd.DataFrame, n_trials: int = 8, save_dir: str = 'data/saved_models'):
     print(f"Starting Optuna Hyperparameter Optimization ({n_trials} trials)...")
 
     def objective(trial):
         config = {
-            'architecture': trial.suggest_categorical('architecture', ['resnet', 'standard', 'wide_deep']),
-            'hidden_dim': trial.suggest_categorical('hidden_dim', [128, 256, 512]),
+            'architecture': trial.suggest_categorical('architecture', ['resnet', 'swiglu']),
+            'hidden_dim': trial.suggest_categorical('hidden_dim', [256, 512]),
             'num_blocks': trial.suggest_int('num_blocks', 2, 4),
-            'dropout': trial.suggest_float('dropout', 0.05, 0.25, step=0.05),
-            'activation': trial.suggest_categorical('activation', ['silu', 'gelu']),
-            'lr': trial.suggest_float('lr', 5e-4, 3e-3, log=True),
-            'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-3, log=True),
-            'batch_size': trial.suggest_categorical('batch_size', [16, 32]),
+            'dropout': trial.suggest_float('dropout', 0.10, 0.20, step=0.05),
+            'activation': trial.suggest_categorical('activation', ['gelu', 'silu']),
+            'lr': trial.suggest_float('lr', 5e-4, 1.5e-3, log=True),
+            'weight_decay': trial.suggest_float('weight_decay', 1e-5, 5e-4, log=True),
+            'batch_size': 16,
             'epochs': 80,
             'patience': 20,
             'n_splits': 5,
