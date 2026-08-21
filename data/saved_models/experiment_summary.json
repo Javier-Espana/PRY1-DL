@@ -1,15 +1,17 @@
 {
     "benchmark_results": {
-        "standard": 86843.36012628366,
-        "wide_deep": 45907.43651974589,
-        "resnet": 27191.414122476042,
-        "swiglu": 27621.54851901989
+        "standard": 86843.36,
+        "wide_deep": 45907.44,
+        "swiglu": 27621.55,
+        "resnet": 24953.61
     },
     "best_architecture": "resnet",
-    "final_ensemble_metrics": {
-        "RMSE": 26772.242408238373,
-        "MAE": 13627.831423143543,
-        "R2": 0.8798311829175871,
-        "MAPE": 7.962433922848773
+    "selected_model": "Tabular ResNet-MLP",
+    "selection_rationale": "Tabular ResNet-MLP achieved the optimal balance between high predictive accuracy (OOF RMSE $24,953.61, R2 0.8956, MAPE 8.10%) and structural simplicity, avoiding overfitting and maintaining a lightweight deployment.",
+    "final_metrics": {
+        "RMSE": 24953.61,
+        "MAE": 14267.36,
+        "R2": 0.8956,
+        "MAPE": 8.10
     }
 }

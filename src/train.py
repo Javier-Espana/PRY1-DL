@@ -5,104 +5,51 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from sklearn.model_selection import KFold
-import optuna
 
 from src.data_processing import TabularPreprocessor
 from src.dataset import create_dataloaders
-from src.models import get_model
-from src.utils import set_seed, calculate_rmse
+from src.models import ResNetMLP
+from src.utils import set_seed, calculate_rmse, calculate_metrics
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
-
-def train_epoch(model, dataloader, criterion, optimizer, device, use_mixup=True):
-    model.train()
-    total_loss = 0.0
-    for X_batch, y_batch in dataloader:
-        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-        if use_mixup and np.random.rand() < 0.25:
-            lam = np.random.beta(0.3, 0.3)
-            perm = torch.randperm(len(X_batch))
-            X_batch = lam * X_batch + (1 - lam) * X_batch[perm]
-            y_batch = lam * y_batch + (1 - lam) * y_batch[perm]
-
-        optimizer.zero_grad()
-        preds = model(X_batch)
-        loss = criterion(preds, y_batch)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
-        total_loss += loss.item() * len(X_batch)
-    return total_loss / len(dataloader.dataset)
-
-def validate_epoch(model, dataloader, criterion, device):
-    model.eval()
-    total_loss = 0.0
-    all_preds, all_targets = [], []
-    with torch.no_grad():
-        for X_batch, y_batch in dataloader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            preds = model(X_batch)
-            loss = criterion(preds, y_batch)
-            total_loss += loss.item() * len(X_batch)
-            all_preds.append(preds.cpu().numpy())
-            all_targets.append(y_batch.cpu().numpy())
-
-    all_preds = np.vstack(all_preds).ravel()
-    all_targets = np.vstack(all_targets).ravel()
-    
-    rmse_dollars = calculate_rmse(np.expm1(all_targets), np.expm1(all_preds))
-    return total_loss / len(dataloader.dataset), rmse_dollars, all_preds
-
-def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_models', verbose: bool = True):
+def train_single_model(df: pd.DataFrame, save_dir: str = 'data/saved_models', verbose: bool = True):
+    """
+    Train and save the single, best-balanced Tabular ResNet-MLP model.
+    Evaluates with 10-Fold CV for unbiased metrics, then saves final model.pt.
+    """
     os.makedirs(save_dir, exist_ok=True)
-    seed = config.get('seed', 42)
+    seed = 42
     set_seed(seed)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if verbose:
-        print(f"--- Training using device: {device} ---")
+        print(f"Training single champion model on device: {device}")
 
     y_all_log = np.log1p(df['SalePrice'].values)
     X_all = df.drop(columns=['SalePrice'])
+    true_dollars = df['SalePrice'].values
 
-    # Fit overall preprocessor to establish fixed feature category dictionary
+    # Fit preprocessor on full data
     full_preprocessor = TabularPreprocessor()
     X_full_proc = full_preprocessor.fit_transform(X_all)
     full_preprocessor.save(os.path.join(save_dir, 'pipeline.joblib'))
-
     input_dim = X_full_proc.shape[1]
-    if verbose:
-        print(f"Processed input feature dimension: {input_dim}")
 
-    # Extract categories_dict for fold consistency
+    if verbose:
+        print(f"Preprocessed input dimension: {input_dim}")
+
     categories_dict = {}
     if full_preprocessor.nominal_cols_ and full_preprocessor.encoder_ is not None:
         for col, cats in zip(full_preprocessor.nominal_cols_, full_preprocessor.encoder_.categories_):
             categories_dict[col] = cats
 
-    # Identify extreme leverage points to exclude from training folds only
-    outlier_mask = (df['GrLivArea'] > 4000) & (df['SalePrice'] < 300000)
-    outlier_indices = set(df[outlier_mask].index.tolist())
-
-    n_splits = config.get('n_splits', 10)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
-
+    # 10-Fold CV for unbiased out-of-fold generalization evaluation
+    kf = KFold(n_splits=10, shuffle=True, random_state=seed)
     oof_preds_log = np.zeros(len(df))
-    fold_rmse_list = []
-    history = {'train_losses': [], 'val_losses': [], 'val_rmses': []}
-
-    arch = config.get('architecture', 'resnet')
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(X_all, y_all_log)):
-        if verbose:
-            print(f"\n========== Fold {fold + 1}/{n_splits} ==========")
-
-        clean_train_idx = np.array([i for i in train_idx if i not in outlier_indices])
-
-        X_train_df, y_train_log = X_all.iloc[clean_train_idx], y_all_log[clean_train_idx]
+        X_train_df, y_train_log = X_all.iloc[train_idx], y_all_log[train_idx]
         X_val_df, y_val_log = X_all.iloc[val_idx], y_all_log[val_idx]
 
         fold_preprocessor = TabularPreprocessor(categories_dict=categories_dict)
@@ -111,183 +58,135 @@ def train_kfold(df: pd.DataFrame, config: dict, save_dir: str = 'data/saved_mode
 
         train_loader, val_loader = create_dataloaders(
             X_train_proc, y_train_log, X_val_proc, y_val_log,
-            batch_size=config.get('batch_size', 16)
+            batch_size=16
         )
 
-        model = get_model(
-            architecture=arch,
+        model = ResNetMLP(
             input_dim=input_dim,
-            hidden_dim=config.get('hidden_dim', 512),
-            num_blocks=config.get('num_blocks', 3),
-            dropout=config.get('dropout', 0.15),
-            activation=config.get('activation', 'gelu')
+            hidden_dim=512,
+            num_blocks=2,
+            dropout=0.20,
+            activation='gelu'
         ).to(device)
 
-        criterion = nn.SmoothL1Loss(beta=0.02)
+        criterion = nn.SmoothL1Loss()
         optimizer = AdamW(
             model.parameters(),
-            lr=config.get('lr', 8e-4),
-            weight_decay=config.get('weight_decay', 1e-4)
+            lr=0.0007427678230287661,
+            weight_decay=0.00023908329860076593
         )
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
+        scheduler = CosineAnnealingLR(optimizer, T_max=150, eta_min=1e-6)
 
         best_val_loss = float('inf')
-        best_val_rmse = float('inf')
         best_preds = None
-        patience = config.get('patience', 35)
-        patience_counter = 0
+        patience, patience_counter = 30, 0
 
-        fold_train_losses, fold_val_losses = [], []
-
-        for epoch in range(1, config.get('epochs', 160) + 1):
-            train_loss = train_epoch(model, train_loader, criterion, optimizer, device, use_mixup=True)
-            val_loss, val_rmse, val_preds = validate_epoch(model, val_loader, criterion, device)
+        for epoch in range(1, 151):
+            model.train()
+            for bx, by in train_loader:
+                bx, by = bx.to(device), by.to(device)
+                optimizer.zero_grad()
+                p = model(bx)
+                loss = criterion(p, by)
+                loss.backward()
+                optimizer.step()
             scheduler.step()
 
-            fold_train_losses.append(train_loss)
-            fold_val_losses.append(val_loss)
+            model.eval()
+            with torch.no_grad():
+                val_loss = 0.0
+                fold_preds = []
+                for bx, by in val_loader:
+                    bx, by = bx.to(device), by.to(device)
+                    p = model(bx)
+                    val_loss += criterion(p, by).item() * len(bx)
+                    fold_preds.append(p.cpu().numpy())
+                val_loss /= len(val_loader.dataset)
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_val_rmse = val_rmse
-                best_preds = val_preds
-                patience_counter = 0
-                checkpoint_filename = f'model_{arch}_seed_{seed}_fold_{fold}.pt'
-                torch.save(model.state_dict(), os.path.join(save_dir, checkpoint_filename))
-            else:
-                patience_counter += 1
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_preds = np.vstack(fold_preds).ravel()
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
 
             if patience_counter >= patience:
-                if verbose:
-                    print(f"Early stopping at epoch {epoch}. Best Val Loss: {best_val_loss:.5f}, Best Val RMSE: ${best_val_rmse:,.2f}")
                 break
 
         oof_preds_log[val_idx] = best_preds
-        fold_rmse_list.append(best_val_rmse)
-        if verbose:
-            print(f"Fold {fold + 1} Best RMSE: ${best_val_rmse:,.2f}")
-
-        history['train_losses'].append(fold_train_losses)
-        history['val_losses'].append(fold_val_losses)
 
     oof_preds_dollars = np.expm1(oof_preds_log)
-    true_dollars = np.expm1(y_all_log)
-    overall_oof_rmse = calculate_rmse(true_dollars, oof_preds_dollars)
+    metrics = calculate_metrics(true_dollars, oof_preds_dollars)
 
     if verbose:
-        print(f"\n==========================================")
-        print(f"Overall Out-of-Fold RMSE: ${overall_oof_rmse:,.2f}")
-        print(f"Mean Fold RMSE: ${np.mean(fold_rmse_list):,.2f} +/- ${np.std(fold_rmse_list):,.2f}")
-        print(f"==========================================")
+        print("\n==========================================")
+        print("TABULAR RESNET-MLP 10-FOLD CV RESULTS:")
+        print(f"  OOF RMSE : ${metrics['RMSE']:,.2f}")
+        print(f"  OOF MAE  : ${metrics['MAE']:,.2f}")
+        print(f"  OOF R2   : {metrics['R2']:.4f}")
+        print(f"  OOF MAPE : {metrics['MAPE']:.2f}%")
+        print("==========================================")
 
-    return overall_oof_rmse, oof_preds_dollars, history
+    # Train final single model on full training set
+    if verbose:
+        print("\nFitting final single model weights on full dataset...")
 
+    X_full_tensor = torch.tensor(X_full_proc, dtype=torch.float32).to(device)
+    y_full_tensor = torch.tensor(y_all_log, dtype=torch.float32).unsqueeze(1).to(device)
+    full_dataset = torch.utils.data.TensorDataset(X_full_tensor, y_full_tensor)
+    full_loader = torch.utils.data.DataLoader(full_dataset, batch_size=16, shuffle=True)
 
-def train_multi_ensemble(df: pd.DataFrame, seeds=(42, 123, 2024), architectures=('resnet', 'swiglu'), save_dir='data/saved_models'):
-    os.makedirs(save_dir, exist_ok=True)
-    all_oof_predictions = []
-    checkpoint_manifest = []
+    final_model = ResNetMLP(
+        input_dim=input_dim,
+        hidden_dim=512,
+        num_blocks=2,
+        dropout=0.20,
+        activation='gelu'
+    ).to(device)
 
-    true_dollars = df['SalePrice'].values
+    criterion = nn.SmoothL1Loss()
+    optimizer = AdamW(
+        final_model.parameters(),
+        lr=0.0007427678230287661,
+        weight_decay=0.00023908329860076593
+    )
+    scheduler = CosineAnnealingLR(optimizer, T_max=120, eta_min=1e-6)
 
-    # Preprocessor initialization and save
-    full_prep = TabularPreprocessor()
-    X_full = full_prep.fit_transform(df.drop(columns=['SalePrice']))
-    full_prep.save(os.path.join(save_dir, 'pipeline.joblib'))
-    input_dim = X_full.shape[1]
+    final_model.train()
+    for epoch in range(1, 121):
+        for bx, by in full_loader:
+            optimizer.zero_grad()
+            p = final_model(bx)
+            loss = criterion(p, by)
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
 
-    print(f"\nTraining Multi-Architecture & Multi-Seed Ensemble ({len(architectures)} Architectures x {len(seeds)} Seeds x 10 Folds)...")
+    # Save single model file
+    model_file_path = os.path.join(save_dir, 'model.pt')
+    torch.save(final_model.state_dict(), model_file_path)
 
-    for arch in architectures:
-        for seed in seeds:
-            print(f"\n>>> Running 10-Fold CV: Architecture={arch.upper()}, Seed={seed}")
-            config = {
-                'architecture': arch,
-                'hidden_dim': 512,
-                'num_blocks': 3,
-                'dropout': 0.15,
-                'activation': 'gelu',
-                'lr': 8e-4,
-                'weight_decay': 1e-4,
-                'batch_size': 16,
-                'epochs': 160,
-                'patience': 35,
-                'n_splits': 10,
-                'seed': seed,
-                'input_dim': input_dim
-            }
-            oof_rmse, oof_preds_dollars, _ = train_kfold(df, config, save_dir=save_dir, verbose=False)
-            print(f"    Finished -> OOF RMSE: ${oof_rmse:,.2f}")
-            all_oof_predictions.append(oof_preds_dollars)
-
-            for fold in range(10):
-                checkpoint_manifest.append({
-                    'filename': f'model_{arch}_seed_{seed}_fold_{fold}.pt',
-                    'architecture': arch,
-                    'seed': seed,
-                    'fold': fold,
-                    'hidden_dim': 512,
-                    'num_blocks': 3,
-                    'dropout': 0.15,
-                    'activation': 'gelu'
-                })
-
-    final_ensemble_oof_dollars = np.mean(all_oof_predictions, axis=0)
-    final_rmse = calculate_rmse(true_dollars, final_ensemble_oof_dollars)
-    final_mape = np.mean(np.abs((true_dollars - final_ensemble_oof_dollars) / true_dollars)) * 100
-    final_r2 = 1.0 - np.sum((true_dollars - final_ensemble_oof_dollars)**2) / np.sum((true_dollars - np.mean(true_dollars))**2)
-
-    print(f"\n==========================================")
-    print(f"FINAL BLENDED MULTI-SEED ENSEMBLE RESULTS:")
-    print(f"  Ensemble Models Count : {len(checkpoint_manifest)}")
-    print(f"  Overall OOF RMSE      : ${final_rmse:,.2f}")
-    print(f"  Overall OOF R2        : {final_r2:.4f}")
-    print(f"  Overall OOF MAPE      : {final_mape:.2f}%")
-    print(f"==========================================")
-
-    config_to_save = {
+    config_data = {
+        'architecture': 'resnet',
+        'hidden_dim': 512,
+        'num_blocks': 2,
+        'dropout': 0.20,
+        'activation': 'gelu',
+        'lr': 0.0007427678230287661,
+        'weight_decay': 0.00023908329860076593,
+        'batch_size': 16,
+        'epochs': 120,
         'input_dim': input_dim,
-        'overall_oof_rmse': float(final_rmse),
-        'overall_oof_r2': float(final_r2),
-        'overall_oof_mape': float(final_mape),
-        'ensemble_manifest': checkpoint_manifest
+        'validation_strategy': '10-Fold Cross Validation',
+        'oof_rmse': float(metrics['RMSE']),
+        'oof_mae': float(metrics['MAE']),
+        'oof_r2': float(metrics['R2']),
+        'oof_mape': float(metrics['MAPE']),
+        'model_file': 'model.pt',
+        'pipeline_file': 'pipeline.joblib'
     }
 
     with open(os.path.join(save_dir, 'model_config.json'), 'w') as f:
-        json.dump(config_to_save, f, indent=4)
+        json.dump(config_data, f, indent=4)
 
-    return final_rmse, final_ensemble_oof_dollars, config_to_save
-
-
-def tune_hyperparameters(df: pd.DataFrame, n_trials: int = 8, save_dir: str = 'data/saved_models'):
-    print(f"Starting Optuna Hyperparameter Optimization ({n_trials} trials)...")
-
-    def objective(trial):
-        config = {
-            'architecture': trial.suggest_categorical('architecture', ['resnet', 'swiglu']),
-            'hidden_dim': trial.suggest_categorical('hidden_dim', [256, 512]),
-            'num_blocks': trial.suggest_int('num_blocks', 2, 4),
-            'dropout': trial.suggest_float('dropout', 0.10, 0.20, step=0.05),
-            'activation': trial.suggest_categorical('activation', ['gelu', 'silu']),
-            'lr': trial.suggest_float('lr', 5e-4, 1.5e-3, log=True),
-            'weight_decay': trial.suggest_float('weight_decay', 1e-5, 5e-4, log=True),
-            'batch_size': 16,
-            'epochs': 80,
-            'patience': 20,
-            'n_splits': 5,
-            'seed': 42
-        }
-
-        oof_rmse, _, _ = train_kfold(df, config, save_dir=os.path.join(save_dir, f"trial_{trial.number}"), verbose=False)
-        return oof_rmse
-
-    study = optuna.create_study(direction='minimize')
-    study.optimize(objective, n_trials=n_trials)
-
-    print("\nBest Optuna Trial:")
-    print(f"  OOF RMSE: ${study.best_value:,.2f}")
-    print("  Params:")
-    for k, v in study.best_params.items():
-        print(f"    {k}: {v}")
-
-    return study.best_params
+    return metrics, oof_preds_dollars, config_data
