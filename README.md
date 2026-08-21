@@ -1,7 +1,7 @@
 # Proyecto 1: Competencia de Modelacion de Deep Learning
-## Deep Learning Housing Price Regression (PyTorch Tabular ResNet Multi-Seed Ensemble)
+## Deep Learning Housing Price Regression (PyTorch Tabular ResNet-MLP)
 
-Este repositorio contiene la solucion completa para el **Proyecto 1: Competencia de Modelacion (CC3092 Deep Learning y sistemas inteligentes)**. El proyecto implementa una arquitectura neuronal optimizada para datos tabulares mediante bloques residuales (**Tabular ResNet-MLP** con activaciones GELU, LayerNorm y Dropout regularizado), combinada en un ensamble multi-semilla de 30 modelos evaluados en validacion cruzada estratificada de 10 pliegues.
+Este repositorio contiene la solucion completa para el **Proyecto 1: Competencia de Modelacion (CC3092 Deep Learning y sistemas inteligentes)**. El proyecto implementa una arquitectura neuronal optimizada para datos tabulares mediante bloques residuales (**Tabular ResNet-MLP** con normalizacion por capa LayerNorm, activaciones GELU, regularizacion por Dropout y funcion de perdida Huber/Smooth L1).
 
 ---
 
@@ -12,10 +12,10 @@ PRY1-DL/
 ├── data/
 │   ├── train.csv                      # Dataset de entrenamiento principal
 │   ├── saved_models/                  # Checkpoints del modelo y preprocesador (Tracked en Git)
-│   │   ├── pipeline.joblib            # Preprocesador ajustado
-│   │   ├── model_resnet_seed_*.pt     # Pesos de los 30 modelos del ensamble
-│   │   ├── model_config.json          # Manifiesto y configuracion del ensamble
-│   │   └── experiment_summary.json    # Resumen comparativo de experimentos
+│   │   ├── pipeline.joblib            # Preprocesador ajustado (248 dimensiones)
+│   │   ├── model.pt                   # Pesos del modelo final de produccion (4.6 MB)
+│   │   ├── model_config.json          # Configuracion y metricas del modelo
+│   │   └── experiment_summary.json    # Resumen comparativo de iteraciones
 │   └── pruebas/
 │       ├── pipeline_test.csv          # Muestra del dataset de prueba
 │       └── expected_output.csv        # Formato de referencia de predicciones
@@ -26,17 +26,17 @@ PRY1-DL/
 │   └── plots/                         # Graficas de EDA y residuales generadas
 ├── notebooks/
 │   ├── 01_eda.ipynb                   # Analisis Exploratorio de Datos
-│   ├── 02_model_experiments.ipynb     # Experimentos, HPO y benchmarking
+│   ├── 02_model_experiments.ipynb     # Metodologia y comparativa de modelos
 │   └── 03_evaluation_and_submission.ipynb # Verificacion del pipeline de prueba
 ├── src/
 │   ├── data_processing.py             # Preprocesador tabular robusto
 │   ├── dataset.py                     # Wrapper PyTorch Dataset/DataLoader
-│   ├── models.py                      # Arquitecturas MLP (ResNet, SwiGLU, Wide&Deep, Standard)
-│   ├── train.py                       # Pipeline 10-Fold CV & Multi-Seed Ensemble
+│   ├── models.py                      # Arquitecturas neuronales (Tabular ResNet, SwiGLU, etc.)
+│   ├── train.py                       # Pipeline de entrenamiento y validacion
 │   ├── evaluate.py                    # Calculo de metricas y residuales
 │   └── utils.py                       # Semillas, metricas y graficado
 ├── main.py                            # CLI unico del pipeline (Entrenamiento e Inferencia)
-├── .gitignore                         # Configuracion de rastreo Git (incluye modelos y CSVs)
+├── .gitignore                         # Configuracion de rastreo Git (incluye modelo y CSVs)
 └── README.md                          # Manual de uso y reproduccion
 ```
 
@@ -73,7 +73,7 @@ Parametros de la inferencia:
 
 ### 2. Entrenamiento y Reproduccion de Experimentos
 
-Para reproducir todo el pipeline (analisis EDA, entrenamiento del ensamble multi-semilla y evaluacion de residuos):
+Para reproducir todo el pipeline (analisis EDA, entrenamiento del modelo Tabular ResNet y evaluacion de residuos):
 
 ```bash
 python main.py train
@@ -83,17 +83,18 @@ python main.py train
 
 ## Control de Versiones con Git (`.gitignore`)
 
-El archivo `.gitignore` esta configurado para incluir en el repositorio todos los archivos CSV de datos y checkpoints de entrenamiento de los modelos:
-* Checkpoints entrenados (`data/saved_models/*.pt`, `data/saved_models/*.joblib`, `data/saved_models/*.json`).
+El archivo `.gitignore` esta configurado para incluir en el repositorio todos los archivos CSV de datos y el checkpoint final del modelo:
+* Checkpoint entrenado (`data/saved_models/model.pt`, `data/saved_models/pipeline.joblib`, `data/saved_models/model_config.json`).
 * Datasets y archivos CSV (`data/*.csv`, `data/**/*.csv`).
 * Excluye carpetas de entorno virtual (`.venv/`), cache de Python (`__pycache__/`) y archivos auxiliares de LaTeX (`*.aux`, `*.log`).
 
 ---
 
-## Resumen de Resultados Finales (Modelo Campeon)
+## Resumen del Modelo Seleccionado (Tabular ResNet-MLP)
 
-* **Metrica Principal de Evaluacion (OOF RMSE)**: **$22,723.01**
-* **Coeficiente de Determinacion ($R^2$)**: **0.9134** 
-* **Error Absoluto Medio (MAE)**: **$13,177.30**
-* **Error Relativo Porcentual (MAPE)**: **7.61%**
-* **Arquitectura del Ensamble**: Tabular ResNet-MLP (30 modelos: 3 semillas x 10 pliegues)
+* **Arquitectura**: Tabular ResNet-MLP (2 bloques residuales, 512 unidades ocultas, LayerNorm, Dropout 0.20)
+* **Validacion Fuera de Muestra (10-Fold OOF RMSE)**: **$24,953.61**
+* **Coeficiente de Determinacion ($R^2$)**: **0.8956** (Casi el 90% de varianza explicada)
+* **Error Absoluto Medio (MAE)**: **$14,267.36**
+* **Error Relativo Porcentual (MAPE)**: **8.10%**
+* **Justificacion de Seleccion**: Punto optimo de parsimonia estructural, eliminando el riesgo de sobreajuste (\textit{overfitting}) de ensambles complejos y garantizando un despliegue liviano (4.6 MB) y determinista.

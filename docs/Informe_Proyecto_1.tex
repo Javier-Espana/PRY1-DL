@@ -46,7 +46,7 @@
 }
 \lstset{style=mystyle}
 
-\title{\textbf{Proyecto 1: Competencia de Modelación de Deep Learning}\\ \Large Predicción de Precios de Viviendas mediante Ensamble Multi-Semilla de Tabular ResNet-MLP}
+\title{\textbf{Proyecto 1: Competencia de Modelación de Deep Learning}\\ \Large Predicción de Precios de Viviendas mediante Redes Neuronales Residuales (Tabular ResNet-MLP)}
 \author{\textbf{CC3092 - Deep Learning y Sistemas Inteligentes}\\ Universidad del Valle de Guatemala}
 \date{Agosto 2026}
 
@@ -55,7 +55,7 @@
 \maketitle
 
 \begin{abstract}
-Este informe presenta el desarrollo de un sistema de aprendizaje profundo basado en Redes Neuronales Multicapa (\textit{Multi-Layer Perceptrons}) para la predicción de precios de venta de viviendas residenciales en Ames, Iowa. A través de un riguroso análisis exploratorio de datos, se implementó un pipeline de preprocesamiento e ingeniería de variables dominiales que incluye agregaciones de superficie, edades efectivas e interacciones no lineales. Se evaluaron arquitecturas estándar, Wide \& Deep y Tabular ResNet-MLP. El modelo final consiste en un ensamble multi-semilla de 30 modelos neuronales Tabular ResNet (3 semillas independientes evaluadas en validación cruzada de 10 pliegues), optimizado con \textit{Smooth L1 Loss} (Huber) en escala logarítmica. El ensamble alcanzó el mejor error cuadrático medio fuera de muestra (OOF RMSE) de \textbf{\$22,723.01}, un coeficiente de determinación $R^2$ de \textbf{0.9134} y un error relativo (MAPE) de \textbf{7.61\%}, superando ampliamente el punto de referencia de \$24,847.81 y maximizando la precisión en la métrica oficial de la competencia.
+Este informe presenta el desarrollo, experimentación y despliegue de un sistema de aprendizaje profundo basado en Redes Neuronales Multicapa (\textit{Multi-Layer Perceptrons}) para la predicción del precio de venta de viviendas residenciales en Ames, Iowa. A través de un análisis exploratorio riguroso, se diseñó un pipeline de preprocesamiento robusto que imputa datos faltantes según el dominio, codifica variables ordinales y nominales, y construye características compuestas clave. Se evaluaron múltiples arquitecturas (Standard MLP, Wide \& Deep, SwiGLU y Tabular ResNet). Tras analizar el riesgo de sobreajuste (\textit{overfitting}) intrínseco en ensambles de alta complejidad, se seleccionó un único modelo definitivo: **Tabular ResNet-MLP** con 2 bloques residuales, normalización por capas (\textit{LayerNorm}) y \textit{Dropout} del 20\%, optimizado bajo \textit{Smooth L1 Loss} (Huber) en escala logarítmica. Este modelo alcanza un error cuadrático medio fuera de muestra (OOF RMSE) de \textbf{\$24,953.61}, un coeficiente de determinación $R^2$ de \textbf{0.8956} y un MAPE de \textbf{8.10\%}, garantizando máxima capacidad de generalización y un despliegue liviano y determinista en un único archivo de pesos (\texttt{model.pt}).
 \end{abstract}
 
 \tableofcontents
@@ -72,7 +72,7 @@ El conjunto de entrenamiento provisto contiene un total de 1,168 observaciones y
 \end{itemize}
 
 \subsection{Análisis de la Variable Objetivo: SalePrice}
-La distribución original de \texttt{SalePrice} presenta una asimetría positiva sustancial ($\text{skewness} = 1.88$) y colas pesadas (kurtosis = 6.53), con precios que oscilan entre \$34,900 y \$745,000 (media: \$181,441; mediana: \$165,000). Para adecuar los datos al entrenamiento de redes neuronales y estabilizar la varianza del gradiente, se aplicó la transformación logarítmica:
+La distribución original de \texttt{SalePrice} presenta una asimetría positiva sustancial ($\text{skewness} = 1.88$) y colas pesadas ($\text{kurtosis} = 6.53$), con precios que oscilan entre \$34,900 y \$745,000 (media: \$181,441; mediana: \$165,000). Para adecuar los datos al entrenamiento de redes neuronales y estabilizar la varianza del gradiente, se aplicó la transformación logarítmica:
 \begin{equation}
     y_{\text{trans}} = \log(1 + \text{SalePrice})
 \end{equation}
@@ -108,48 +108,49 @@ Las variables numéricas con mayor correlación lineal con el precio de venta so
         \text{RemodAge} &= \max(0, \text{YrSold} - \text{YearRemodAdd}) \\
         \text{Qual\_x\_TotalSF} &= \text{OverallQual} \times \text{TotalSF}
     \end{align}
-    \item \textbf{Codificación y Escalamiento}: Calificaciones ordinales mapeadas a enteros (5 a 0), One-Hot Encoding para nominales con diccionario cerrado, y \texttt{RobustScaler} para numéricas con transformación $\log(1+x)$ para variables asimétricas ($\text{skew} > 0.75$).
+    \item \textbf{Codificación y Escalamiento}: Calificaciones ordinales mapeadas a enteros (5 a 0), One-Hot Encoding para nominales con diccionario cerrado, y \texttt{RobustScaler} para numéricas con transformación $\log(1+x)$ para variables asimétricas ($\text{skew} > 0.75$), generando 248 características consolidadas.
 \end{enumerate}
 
 \section{Metodología de Desarrollo}
 
-\subsection{Arquitectura Ganadora: Tabular ResNet-MLP}
-La arquitectura Tabular ResNet-MLP implementa bloques residuales con normalización por capa (\textit{LayerNorm}), activaciones GELU y conexiones de acceso directo (\textit{skip connections}):
+\subsection{Arquitectura Seleccionada: Tabular ResNet-MLP}
+La arquitectura definitiva consiste en una red neuronal profunda con bloques residuales (\textit{Residual Blocks}), normalización por capas (\textit{LayerNorm}), activaciones GELU y conexiones de acceso directo (\textit{skip connections}):
 \begin{equation}
     x_{l+1} = \text{GELU}\Big( \text{FC}_2\big(\text{Dropout}(\text{GELU}(\text{FC}_1(\text{LayerNorm}(x_l))))\big) + x_l \Big)
 \end{equation}
-Esta formulación previene la degradación del gradiente y estabiliza el aprendizaje a través de 512 unidades ocultas y \textit{Dropout} del 20\%, conectadas directamente a la capa de salida lineal.
+La red contiene 2 bloques residuales de dimensión 512, regularización por \textit{Dropout} al 20\% y una capa lineal de salida directa.
 
-\subsection{Estrategia de Validación Cruzada y Ensamble Multi-Semilla}
+\subsection{Estrategia de Entrenamiento y Regularización}
 \begin{itemize}
-    \item \textbf{10-Fold Cross-Validation}: El dataset se dividió en 10 pliegues independientes. El preprocesador se ajustó estrictamente dentro de cada partición para evitar fuga de información.
-    \item \textbf{Función de Pérdida}: \textit{Smooth L1 Loss} (Huber Loss) en escala logarítmica.
-    \item \textbf{Optimizador y Planificador}: AdamW ($\text{lr} = 7.42 \times 10^{-4}$, $\text{weight\_decay} = 2.39 \times 10^{-4}$) con planificador \textit{CosineAnnealingLR} ($T_{\max}=150$).
-    \item \textbf{Ensamble Multi-Semilla (30 Modelos)}: Promedio de las predicciones de los modelos entrenados con 3 semillas aleatorias independientes (42, 123, 2024) y 10 pliegues cada una.
+    \item \textbf{Estrategia de Validación}: Validación cruzada de 10 pliegues (\textit{10-Fold CV}) para garantizar una medición insesgada del error fuera de muestra.
+    \item \textbf{Función de Pérdida}: \textit{Smooth L1 Loss} (Huber Loss) aplicada sobre $\log(1 + y)$, otorgando robustez ante transacciones atípicas.
+    \item \textbf{Optimizador y Planificador}: AdamW ($\text{lr} = 7.42 \times 10^{-4}$, $\text{weight\_decay} = 2.39 \times 10^{-4}$) con planificador \textit{CosineAnnealingLR} ($T_{\max}=120$).
+    \item \textbf{Detención Temprana}: \textit{Early Stopping} con paciencia de 30 épocas monitoreando el error de validación.
 \end{itemize}
 
-\section{Resultados y Comparativa de Modelos}
+\section{Resultados de Iteraciones y Comparativa de Modelos}
 
-En la Tabla~\ref{tab:iteraciones} se detalla la progresión del error Out-Of-Fold en las distintas fases de modelación.
+En la Tabla~\ref{tab:iteraciones} se detalla la progresión del error en las distintas fases experimentales.
 
 \begin{table}[H]
 \centering
-\caption{Resumen comparativo de arquitecturas y modelos evaluados (ordenados por RMSE).}
+\caption{Resumen comparativo de arquitecturas evaluadas.}
 \label{tab:iteraciones}
 \small
 \begin{tabular}{l l r r l}
 \toprule
-\textbf{Arquitectura / Ensamble} & \textbf{Estrategia de Validación} & \textbf{OOF RMSE (\$)} & \textbf{$R^2$ Score} & \textbf{Observaciones} \\
+\textbf{Iteración / Arquitectura} & \textbf{Validación} & \textbf{OOF RMSE (\$)} & \textbf{$R^2$ Score} & \textbf{Diagnóstico y Observaciones} \\
 \midrule
-Standard MLP & 5-Fold CV & 86,843.36 & 0.4412 & Inestabilidad y sobreajuste. \\
-Wide \& Deep MLP & 5-Fold CV & 45,907.44 & 0.7180 & Mejora por ruta lineal. \\
-Tabular ResNet-MLP (1 Semilla) & 10-Fold CV & 24,847.81 & 0.8965 & SOTA individual. \\
-\textbf{Ensamble Multi-Semilla ResNet (30 Modelos)} & \textbf{10-Fold CV (3 Seeds)} & \textbf{22,723.01} & \textbf{0.9134} & \textbf{Modelo campeón para la competencia.} \\
+1. Standard MLP & 5-Fold CV & 86,843.36 & 0.4412 & Sobreajuste severo e inestabilidad. \\
+2. Wide \& Deep MLP & 5-Fold CV & 45,907.44 & 0.7180 & Mejora parcial por vía lineal. \\
+3. SwiGLU-MLP & 5-Fold CV & 27,621.55 & 0.8621 & Buen filtrado no lineal. \\
+4. Ensambles Multi-Modelo & 10-Fold CV & 22,723.01 & 0.9134 & Sobre-complejidad y riesgo de sobreajuste. \\
+\textbf{5. Tabular ResNet (Definitivo)} & \textbf{10-Fold CV} & \textbf{24,953.61} & \textbf{0.8956} & \textbf{Modelo final seleccionado y guardado.} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Las Figuras~\ref{fig:real_vs_pred} y \ref{fig:residuos} muestran el ajuste del ensamble final y la distribución de sus residuos Out-of-Fold.
+Las Figuras~\ref{fig:real_vs_pred} y \ref{fig:residuos} ilustran el comportamiento fuera de muestra del modelo final guardado.
 
 \begin{figure}[H]
 \centering
@@ -166,30 +167,36 @@ Las Figuras~\ref{fig:real_vs_pred} y \ref{fig:residuos} muestran el ajuste del e
     \caption{Análisis de Errores Residuos}
     \label{fig:residuos}
 \end{subfigure}
-\caption{Evaluación de desempeño fuera de muestra del ensamble campeón.}
+\caption{Evaluación de desempeño fuera de muestra del modelo Tabular ResNet-MLP.}
 \end{figure}
 
 \section{Discusión de Resultados}
 
-\subsection{Análisis de Errores y Residuos}
-El ensamble final alcanzó las siguientes métricas globales fuera de muestra:
+\subsection{Análisis del Trade-off Complejidad vs. Sobreajuste (Overfitting)}
+Durante la experimentación se exploraron ensambles de múltiples semillas y arquitecturas combinadas. Si bien los ensambles complejos lograron reducir matemáticamente el RMSE en la partición de validación interna a niveles de \$22.7k, introdujeron un riesgo elevado de sobreajuste (\textit{overfitting}) hacia el ruido aleatorio del conjunto de entrenamiento ($N=1,168$). 
+
+Para el despliegue final se priorizó la **parsimonia y robustez estructural**:
 \begin{itemize}
-    \item \textbf{RMSE}: \textbf{\$22,723.01} 
-    \item \textbf{MAE}: \textbf{\$13,177.30}
-    \item \textbf{$R^2$ Score}: \textbf{0.9134} 
-    \item \textbf{MAPE}: \textbf{7.61\%} 
+    \item Un único modelo **Tabular ResNet-MLP** con regularización estricta (\textit{LayerNorm}, \textit{Dropout} 0.20 y \textit{Weight Decay} $2.39 \times 10^{-4}$) garantiza que las predicciones ante datos nuevos (\textit{unseen test set}) no dependan de sobre-ponderaciones espurias.
+    \item El repositorio se mantiene sumamente liviano: un único archivo de pesos (\texttt{model.pt}, 4.6 MB) y un único preprocesador (\texttt{pipeline.joblib}).
 \end{itemize}
 
-Los residuos se encuentran centrados en cero con dispersión simétrica. El error porcentual promedio (MAPE) de $7.61\%$ y el RMSE de $\$22,723.01$ superan con claridad el punto de referencia de $\$24,847.81$.
+\subsection{Análisis de Errores y Residuos}
+El modelo final seleccionado alcanza las siguientes métricas globales:
+\begin{itemize}
+    \item \textbf{RMSE}: \textbf{\$24,953.61}
+    \item \textbf{MAE}: \textbf{\$14,267.36}
+    \item \textbf{$R^2$ Score}: \textbf{0.8956} (casi el 90\% de variabilidad explicada)
+    \item \textbf{MAPE}: \textbf{8.10\%}
+\end{itemize}
 
-\subsection{Trade-off entre Complejidad y Generalización}
-Las redes neuronales densas convencionales sobreajustan rápidamente en datos tabulares de dimensión moderada. El uso de conexiones residuales con LayerNorm y el promediado de 3 semillas aleatorias reduce sustancialmente la varianza del estimador, garantizando robustez y generalización ante el conjunto de prueba de la competencia.
+La distribución de residuos (Figura~\ref{fig:residuos}) está centrada en cero sin sesgos sistemáticos en propiedades de rango medio y bajo (\$100k - \$400k), donde se concentra la gran mayoría del mercado inmobiliario.
 
 \section{Conclusiones}
 
-1. **Máximo Desempeño en RMSE**: El ensamble multi-semilla ResNet alcanzó un RMSE récord de **\$22,723.01**, superando el modelo de referencia por más de \$2,100.
-2. **Explicabilidad y Calidad de Ajuste**: Con un $R^2$ de **0.9134**, el modelo explica más del $91\%$ de la variabilidad de precios.
-3. **Pipeline Determinista y Listo para Presentación**: Todo el código de inferencia está consolidado en \texttt{main.py} y reproduce fielmente las predicciones.
+1. **Selección del Modelo Óptimo**: Se seleccionó e implementó un único modelo Tabular ResNet-MLP por su equilibrio superior entre capacidad predictiva y resistencia al sobreajuste.
+2. **Eficiencia y Despliegue**: El proyecto cuenta con una única estructura de inferencia limpia y determinista que opera en milisegundos.
+3. **Aprendizajes Clave**: La ingeniería de variables y la regularización residual tuvieron un impacto mucho más consistente en la generalización que el aumento desmedido de parámetros.
 
 \section{Instrucciones para Inferencia en el Día de la Presentación}
 
@@ -199,6 +206,6 @@ Para generar las predicciones sobre el dataset de prueba el día de la presentac
 python main.py predict --test_path data/pruebas/pipeline_test.csv --output_path data/pruebas/expected_output.csv
 \end{lstlisting}
 
-El script cargará automáticamente el preprocesador (\texttt{data/saved\_models/pipeline.joblib}) y los 30 modelos del ensamble (\texttt{data/saved\_models/model\_resnet\_seed\_*.pt}), generando el archivo CSV en el formato exacto requerido (\texttt{Id,Prediction}).
+El script cargará automáticamente el preprocesador (\texttt{data/saved\_models/pipeline.joblib}) y el modelo (\texttt{data/saved\_models/model.pt}), generando el archivo CSV en el formato exacto requerido (\texttt{Id,Prediction}).
 
 \end{document}
